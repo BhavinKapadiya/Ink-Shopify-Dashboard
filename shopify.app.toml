@@ -2,7 +2,7 @@
 
 client_id = "60b3bc94dce92e75df9de4ba630cf091"
 name = "test store"
-application_url = "https://test-store1.onrender.com"
+application_url = "https://shopifyapp.terzettoo.com"
 embedded = true
 
 [build]
@@ -12,12 +12,12 @@ automatically_update_urls_on_dev = true
 api_version = "2026-01"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/scopes_update" ]
-  uri = "/webhooks/app/scopes_update"
-
-  [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -26,4 +26,4 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = ["https://test-store1.onrender.com/auth/callback"]
+redirect_urls = [ "https://shopifyapp.terzettoo.com/auth/callback" ]

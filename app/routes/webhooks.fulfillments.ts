@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import shopify, { authenticate } from "../shopify.server";
 
 const METAFIELD_MUTATION = `
-mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
+mutation SetFulfillmentStatus($metafields: [MetafieldsSetInput!]!) {
   metafieldsSet(metafields: $metafields) {
     userErrors { field message }
   }
@@ -11,12 +11,17 @@ mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { payload, shop, topic, session } = await authenticate.webhook(request);
-  const orderGid = payload?.admin_graphql_api_id as string | undefined;
+
+  const orderGid =
+    (payload?.order?.admin_graphql_api_id as string | undefined) ||
+    (payload?.order_id ? `gid://shopify/Order/${payload.order_id}` : undefined);
 
   if (!orderGid || !session) {
-    console.error("[orders/create] Missing order id or session", { shop, topic });
+    console.error("[fulfillments/*] Missing order id or session", { shop, topic });
     return new Response("Missing order or session", { status: 400 });
   }
+
+  const statusValue = topic.includes("update") ? "in_fulfillment" : "fulfillment_created";
 
   const client = new shopify.api.clients.Graphql({ session });
   const variables = {
@@ -26,28 +31,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         namespace: "ink",
         key: "verification_status",
         type: "single_line_text_field",
-        value: "pending",
-      },
-      {
-        ownerId: orderGid,
-        namespace: "ink",
-        key: "proof_reference",
-        type: "single_line_text_field",
-        value: String(payload?.id ?? ""),
-      },
-      {
-        ownerId: orderGid,
-        namespace: "ink",
-        key: "photos_hashes",
-        type: "single_line_text_field",
-        value: "[]",
-      },
-      {
-        ownerId: orderGid,
-        namespace: "ink",
-        key: "nfc_uid",
-        type: "single_line_text_field",
-        value: "",
+        value: statusValue,
       },
     ],
   };
@@ -55,10 +39,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const result = await client.request(METAFIELD_MUTATION, { variables });
   const errors = result?.data?.metafieldsSet?.userErrors;
   if (errors?.length) {
-    console.error("[orders/create] Metafield errors", errors);
+    console.error("[fulfillments/*] Metafield errors", errors);
     return new Response("Metafield error", { status: 500 });
   }
 
-  console.log(`[orders/create] Metafields initialized for ${shop} -> ${orderGid}`);
+  console.log(`[${topic}] Metafields updated for ${shop} -> ${orderGid}`);
   return new Response("ok");
 };
