@@ -41,7 +41,23 @@ export const NFSService = {
 
     if (!response.ok) {
       const errorText = await response.text();
+      
+      // Log detailed error information
       console.error(`❌ NFS Enroll Failed [${response.status}]:`, errorText);
+      console.error(`Response Headers:`, JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
+      console.error(`Request URL:`, `${NFS_API_URL}/enroll`);
+      console.error(`Request Payload:`, JSON.stringify(payload, null, 2));
+      
+      // Try to parse error as JSON for more details
+      let errorDetails = errorText;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = JSON.stringify(errorJson, null, 2);
+        console.error(`Parsed Error:`, errorDetails);
+      } catch {
+        // Not JSON, use raw text
+      }
+      
       throw new Error(`NFS Enrollment failed: ${errorText}`);
     }
 
