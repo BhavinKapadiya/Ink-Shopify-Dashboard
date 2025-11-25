@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite" // NOTE: Switch back to "postgresql" for production
+  provider = "postgresql" // NOTE: Switch back to "postgresql" for production
   url      = env("DATABASE_URL")
 }
 
