@@ -1,13 +1,17 @@
-export async function generateSHA256Hash(file: File): Promise<string> {
-  // Convert file to ArrayBuffer
-  const arrayBuffer = await file.arrayBuffer();
+import crypto from "crypto";
+
+export async function generateSHA256Hash(input: Buffer | Blob): Promise<string> {
+  let buffer: Buffer;
   
-  // Generate hash using Web Crypto API
-  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  if (Buffer.isBuffer(input)) {
+    buffer = input;
+  } else {
+    // Blob/File object - convert to buffer
+    const arrayBuffer = await input.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+  }
   
-  // Convert to hex string
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  return hashHex;
+  // Generate SHA-256 hash
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  return hash;
 }

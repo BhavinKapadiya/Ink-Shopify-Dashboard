@@ -45,6 +45,64 @@ const formatDate = (dateString: string) => {
     });
 };
 
+// Helper: Client-side Image Compression
+const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const maxWidth = 1280;
+        const maxHeight = 1280;
+        const quality = 0.7;
+
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth || height > maxHeight) {
+                    if (width > height) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    } else {
+                        width = Math.round((width * maxHeight) / height);
+                        height = maxHeight;
+                    }
+                }
+
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    reject(new Error("Could not get canvas context"));
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (!blob) {
+                            reject(new Error("Compression failed"));
+                            return;
+                        }
+                        const compressedFile = new File([blob], file.name, {
+                            type: "image/jpeg",
+                            lastModified: Date.now(),
+                        });
+                        resolve(compressedFile);
+                    },
+                    "image/jpeg",
+                    quality
+                );
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+};
+
 interface Product {
     title: string;
     quantity: number;
@@ -469,8 +527,8 @@ export default function OrderDetails() {
     };
 
     const handleUploadPhoto = async (index: number) => {
-        const photo = photos[index];
-        if (!photo) return;
+        const originalPhoto = photos[index];
+        if (!originalPhoto) return;
 
         setUploadingIndex(index);
         setUploadStatus((prev) => {
@@ -483,6 +541,16 @@ export default function OrderDetails() {
             next[index] = 10; // initial
             return next;
         });
+
+        // Compress the image
+        let photo: File;
+        try {
+            photo = await compressImage(originalPhoto);
+            console.log(`Compressed: ${originalPhoto.size} -> ${photo.size}`);
+        } catch (e) {
+            console.error("Compression failed, using original", e);
+            photo = originalPhoto;
+        }
 
         // 0. Get GPS (client-side)
         let gpsString = "";

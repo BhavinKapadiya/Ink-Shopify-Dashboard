@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite" // NOTE: Switch back to "postgresql" for production
   url      = env("DATABASE_URL")
 }
 
@@ -26,4 +26,33 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
+}
+
+model Proof {
+  proof_id             String    @id @default(cuid())
+  order_id             String
+  nfc_uid              String
+  nfc_token            String    @unique
+  enrollment_timestamp DateTime  @default(now())
+  shipping_address_gps String    // Stored as JSON string
+  warehouse_gps        String?   // Stored as JSON string
+  photo_urls           String    // Stored as JSON string
+  photo_hashes         String    // Stored as JSON string
+  customer_phone_last4 String?
+  delivery_timestamp   DateTime?
+  delivery_gps         String?   // Stored as JSON string
+  device_info          String?
+  gps_verdict          String?
+  phone_verified       Boolean?  @default(false)
+  signature            String?
+  key_id               String?   @default("key_001")
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+}
+
+model WarehouseUser {
+  id       String @id @default(cuid())
+  username String @unique
+  password String // Store hashed password
+  role     String // "warehouse" or "delivery"
 }
