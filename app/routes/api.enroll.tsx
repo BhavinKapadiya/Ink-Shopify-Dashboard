@@ -148,6 +148,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       photo_hashes,
       shipping_address_gps,
       customer_phone_last4: customer_phone_last4 || "", // Always include, use empty string if not available
+      warehouse_gps: {
+        lat: 40.7580, // Default warehouse location (from client specs)
+        lng: -73.9855
+      }
     };
 
     let nfsResponse: { proof_id: string; enrollment_status: string; key_id: string } | null = null;
