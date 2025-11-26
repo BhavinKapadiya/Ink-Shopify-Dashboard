@@ -170,11 +170,6 @@ export const loader = async ({
         return { order: null, error: "Order ID is required" };
     }
 
-    // 1. Fetch local proof
-    const proof = await prisma.proof.findFirst({
-        where: { order_id: orderId },
-    });
-
     const query = `#graphql
     query GetOrderDetail($id: ID!) {
       order(id: $id) {
@@ -243,6 +238,15 @@ export const loader = async ({
         }
 
         const orderData = result.data.order;
+
+        // 1. Fetch local proof using Order Number (e.g. "1003") derived from Name (e.g. "#1003")
+        const orderNumber = orderData.name.replace("#", "");
+        console.log(`🔍 Order Details Loader: Fetching proof for Order #${orderNumber} (Shopify ID: ${orderId})`);
+        
+        const proof = await prisma.proof.findFirst({
+            where: { order_id: orderNumber },
+        });
+        console.log(`✅ Order Details Loader: Proof found? ${!!proof}`);
 
         // Extract metafields
         const metafields: OrderDetail["metafields"] = {};
