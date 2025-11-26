@@ -81,7 +81,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const orders: Order[] = data.data?.orders?.edges?.map((edge: any) => {
             const order = edge.node;
             const numericId = order.id.replace("gid://shopify/Order/", "");
-            const proof = proofMap.get(numericId);
+            
+            // Proofs are stored by Order Number (e.g. "1003"), not Shopify ID
+            // order.name is usually "#1003", so we strip the "#"
+            const orderNumber = order.name.replace("#", "");
+            
+            // Try matching by order number first (most likely), then by numeric ID (fallback)
+            const proof = proofMap.get(orderNumber) || proofMap.get(numericId);
 
             return {
                 id: numericId,
