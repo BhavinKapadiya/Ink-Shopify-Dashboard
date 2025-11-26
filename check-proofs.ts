@@ -3,7 +3,10 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🔍 Checking Proof records in database...");
+  const dbUrl = process.env.DATABASE_URL || "";
+  const maskedUrl = dbUrl.replace(/:[^:@]+@/, ":****@");
+  console.log(`🔍 Checking Proof records in database...`);
+  console.log(`🔌 Connecting to: ${maskedUrl}`);
   
   try {
     const proofs = await prisma.proof.findMany({
@@ -24,6 +27,7 @@ async function main() {
         console.log(`📊 Status: ${p.enrollment_status || "N/A"}`);
         console.log(`🔑 Key ID: ${p.key_id || "N/A"}`);
         console.log(`📅 Time: ${p.enrollment_timestamp.toLocaleString()}`);
+        console.log("RAW JSON:", JSON.stringify(p, null, 2));
       });
       console.log("------------------------------------------------");
     }
