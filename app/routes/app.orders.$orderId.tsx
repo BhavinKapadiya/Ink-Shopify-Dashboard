@@ -161,11 +161,19 @@ export const loader = async ({
     params,
 }: LoaderFunctionArgs): Promise<LoaderData> => {
     const { admin } = await authenticate.admin(request);
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
     const { orderId } = params;
 
     if (!orderId) {
+        await prisma.$disconnect();
         return { order: null, error: "Order ID is required" };
     }
+
+    // 1. Fetch local proof
+    const proof = await prisma.proof.findFirst({
+        where: { order_id: orderId },
+    });
 
     const query = `#graphql
     query GetOrderDetail($id: ID!) {
@@ -230,6 +238,7 @@ export const loader = async ({
         const result = await response.json();
 
         if (!result.data?.order) {
+            await prisma.$disconnect();
             return { order: null, error: "Order not found" };
         }
 
@@ -241,6 +250,15 @@ export const loader = async ({
             metafields[edge.node.key as keyof OrderDetail["metafields"]] =
                 edge.node.value;
         });
+
+        // OVERRIDE metafields with local proof data if available
+        if (proof) {
+            metafields.verification_status = proof.enrollment_status || "Enrolled (Local)";
+            metafields.nfc_uid = proof.nfc_uid;
+            metafields.proof_reference = proof.nfs_proof_id || proof.proof_id;
+            metafields.photos_hashes = proof.photo_hashes;
+            metafields.delivery_gps = proof.delivery_gps || proof.shipping_address_gps; // Fallback to shipping GPS if delivery not set
+        }
 
         // Extract products
         const products: Product[] = orderData.lineItems.edges.map((edge: any) => ({
@@ -269,9 +287,11 @@ export const loader = async ({
             metafields,
         };
 
+        await prisma.$disconnect();
         return { order, error: null };
     } catch (error) {
         console.error("Loader error:", error);
+        await prisma.$disconnect();
         return { order: null, error: "Failed to load order" };
     }
 };
