@@ -160,10 +160,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // 3. Call NFS Backend to Enroll
+    // NOTE: Alan's API expects the ACTUAL tag UID (serial_number), not our generated hash
     const enrollPayload = {
       order_id,
-      nfc_uid: uid,
-      nfc_token: token,
+      nfc_uid: serial_number,  // Send original serial number to Alan (e.g., "ef:8b:c4:c3")
+      nfc_token: token,  // Send our generated token
       photo_urls,
       photo_hashes,
       shipping_address_gps,
