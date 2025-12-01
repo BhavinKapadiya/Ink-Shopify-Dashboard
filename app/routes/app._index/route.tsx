@@ -3,6 +3,14 @@ import { useLoaderData, Link } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../../shopify.server";
 
+// Local interface for Proof since Prisma export is failing
+interface Proof {
+    order_id: string;
+    enrollment_status: string | null;
+    nfc_uid: string | null;
+    nfs_proof_id: string | null;
+}
+
 // Define types for our data
 interface Order {
     id: string;
@@ -38,7 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     // 1. Fetch local proofs
     console.log("🔍 Dashboard Loader: Fetching proofs...");
-    const proofs = await prisma.proof.findMany();
+    const proofs = await prisma.proof.findMany() as Proof[];
     console.log(`✅ Dashboard Loader: Found ${proofs.length} proofs.`);
     if (proofs.length > 0) {
         console.log("🔍 Sample Proof IDs:", proofs.slice(0, 3).map(p => p.order_id).join(", "));
@@ -81,11 +89,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const orders: Order[] = data.data?.orders?.edges?.map((edge: any) => {
             const order = edge.node;
             const numericId = order.id.replace("gid://shopify/Order/", "");
-            
+
             // Proofs are stored by Order Number (e.g. "1003"), not Shopify ID
             // order.name is usually "#1003", so we strip the "#"
             const orderNumber = order.name.replace("#", "");
-            
+
             // Try matching by order number first (most likely), then by numeric ID (fallback)
             const proof = proofMap.get(orderNumber) || proofMap.get(numericId);
 
@@ -122,17 +130,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 function getStatusBadge(status: string): StatusBadge {
     const statusLower = status ? status.toLowerCase() : "pending";
 
-    if (statusLower === "verified" || statusLower === "enrolled") {
-        return { tone: "success", icon: "✅", text: "Verified" };
-    } else if (statusLower === "pending") {
-        return { tone: "attention", icon: "⏳", text: "Pending" };
-    } else if (statusLower === "flagged") {
-        return { tone: "critical", icon: "🚩", text: "Flagged" };
-    } else if (statusLower === "enrolled_local_only") {
-        return { tone: "info", icon: "💾", text: "Local Only" };
-    } else {
-        return { tone: "info", icon: "ℹ️", text: status };
+    if (statusLower === "verified") {
+        return { tone: "success", icon: "✅", text: "Enrolled" };
     }
+
+    // Everything else (Pending, Enrolled (Local), etc) shows as Pending
+    return { tone: "attention", icon: "⏳", text: "Pending" };
 }
 
 // Helper function to format date
@@ -182,9 +185,9 @@ export default function DashboardHome() {
                         border: "1px solid #e1e3e5"
                     }}>
                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#008060" }}>
-                            {orders.filter((o: Order) => ["verified", "enrolled"].includes(o.verificationStatus.toLowerCase())).length}
+                            {orders.filter((o: Order) => o.verificationStatus.toLowerCase() === "verified").length}
                         </div>
-                        <div style={{ color: "#6d7175", fontSize: "14px" }}>Verified</div>
+                        <div style={{ color: "#6d7175", fontSize: "14px" }}>Enrolled</div>
                     </div>
 
                     <div style={{
@@ -194,7 +197,7 @@ export default function DashboardHome() {
                         border: "1px solid #e1e3e5"
                     }}>
                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#ffa500" }}>
-                            {orders.filter((o: Order) => o.verificationStatus.toLowerCase() === "pending").length}
+                            {orders.filter((o: Order) => o.verificationStatus.toLowerCase() !== "verified").length}
                         </div>
                         <div style={{ color: "#6d7175", fontSize: "14px" }}>Pending</div>
                     </div>

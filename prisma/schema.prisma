@@ -48,6 +48,13 @@ model Proof {
   key_id               String?   @default("key_001")
   nfs_proof_id         String?
   enrollment_status    String?
+  
+  // Alan's API verification response fields
+  verification_status      String?   // e.g., "verified", "flagged"
+  distance_meters          Float?    // Distance between shipping and delivery GPS
+  verify_url               String?   // URL to view verification details on Alan's platform
+  verification_updated_at  DateTime? // Timestamp when Alan's verification data was last updated
+  
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
 }

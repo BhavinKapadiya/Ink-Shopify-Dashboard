@@ -95,19 +95,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const alanData = await alanResponse.json();
         console.log("✅ Alan's server response:", alanData);
 
-        // Update local database with verification info
-        console.log("💾 Updating local database with verification info...");
+        // Check if verification data already exists
+        const hasExistingVerification = proof.verification_status !== null;
+
+        if (hasExistingVerification) {
+            console.log("📝 Updating existing verification data with new timestamp...");
+            console.log(`   Previous verification status: ${proof.verification_status}`);
+        } else {
+            console.log("🆕 Adding new verification data...");
+        }
+
+        // Update local database with ALL verification info from Alan's response
+        console.log("💾 Saving verification data to local database...");
         await prisma.proof.update({
             where: { proof_id: proof.proof_id },
             data: {
+                // Your delivery data (fields you control)
                 delivery_timestamp: new Date(),
                 delivery_gps: JSON.stringify(delivery_gps),
-                device_info,
-                gps_verdict: alanData.gps_verdict,
+                device_info: device_info || "Unknown",
                 phone_verified: !!phone_last4,
+
+                // Alan's API response data (fields from external API)
+                verification_status: alanData.status || alanData.verification_status,
+                gps_verdict: alanData.gps_verdict,
+                distance_meters: alanData.distance_meters ? parseFloat(alanData.distance_meters) : null,
+                signature: alanData.signature,
+                verify_url: alanData.verify_url,
+                nfs_proof_id: alanData.proof_id || proof.nfs_proof_id, // Keep existing if not in response
+
+                // Timestamp for when Alan's verification data was last updated
+                verification_updated_at: new Date(),
             },
         });
-        console.log("✅ Local database updated");
+
+        console.log(hasExistingVerification
+            ? "✅ Verification data updated with new timestamp"
+            : "✅ New verification data saved to local database"
+        );
 
         await prisma.$disconnect();
 
