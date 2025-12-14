@@ -18,11 +18,12 @@ export const loader = async () => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  // We still need Prisma for Session table (Shopify OAuth)
   const { PrismaClient } = await import("@prisma/client");
   const prisma = new PrismaClient();
 
   try {
-    // Get offline session
+    // Get offline session (needed for Shopify API calls)
     const session = await prisma.session.findFirst({
       where: { isOnline: false },
     });
@@ -58,21 +59,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Convert serial number to UID and Token (deterministic)
     const { uid, token } = serialNumberToToken(serial_number);
-    console.log(`✅ Converted serial to UID: ${uid}, Token: ${token}`);
+    console.log(`✅ Converted serial to UID: ${uid}, Token: ${token.substring(0, 30)}...`);
 
-    // Now validate with converted values
-    if (!order_id || !uid || !token || !photo_urls || !photo_hashes) {
-      await prisma.$disconnect();
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        {
-          status: 400,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
-        }
-      );
-    }
-
-    // Create admin client helper
+    // Create admin client helper for Shopify API calls
     const admin = {
       graphql: async (query: string, options?: any) => {
         const response = await fetch(`https://${session.shop}/admin/api/2024-10/graphql.json`, {
@@ -128,30 +117,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Continue enrollment even if phone fetch fails
     }
 
-    // 2. Save to local Proof table (backup)
-    console.log("💾 Saving enrollment to database...");
-    let localProofId: string;
+    // 2. Call Alan's NFS API to Enroll
+    // Alan's API is the SINGLE SOURCE OF TRUTH - no local database save
+    console.log("🚀 Calling Alan's NFS API /enroll...");
+    
+    const enrollPayload = {
+      order_id,
+      nfc_uid: serial_number,  // Send original serial number to Alan (e.g., "ef:8b:c4:c3")
+      nfc_token: token,        // Send our deterministically generated token
+      photo_urls,
+      photo_hashes,
+      shipping_address_gps,
+      customer_phone_last4: customer_phone_last4 || "1234",  // Default if not available
+      warehouse_gps: {
+        lat: 40.7580,
+        lng: -73.9855
+      }
+    };
 
+    let nfsResponse;
     try {
-      const proofRecord = await prisma.proof.create({
-        data: {
-          order_id,
-          nfc_uid: uid,
-          nfc_token: token,
-          photo_urls: JSON.stringify(photo_urls),
-          photo_hashes: JSON.stringify(photo_hashes),
-          shipping_address_gps: JSON.stringify(shipping_address_gps),
-          customer_phone_last4,
-          enrollment_timestamp: new Date(),
-        },
-      });
-      localProofId = proofRecord.proof_id;
-      console.log(`✅ Saved to database with proof_id: ${localProofId}`);
-    } catch (dbError: any) {
-      console.error("❌ Database save failed:", dbError);
+      nfsResponse = await NFSService.enroll(enrollPayload);
+      console.log(`✅ NFS enrollment successful: ${nfsResponse.proof_id}`);
+    } catch (error: any) {
+      console.error("❌ NFS enrollment failed:", error.message);
       await prisma.$disconnect();
       return new Response(
-        JSON.stringify({ error: "Failed to save enrollment to database", details: dbError.message }),
+        JSON.stringify({ 
+          error: "Enrollment failed", 
+          details: error.message 
+        }),
         {
           status: 500,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
@@ -159,47 +154,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // 3. Call NFS Backend to Enroll
-    // NOTE: Alan's API expects the ACTUAL tag UID (serial_number), not our generated hash
-    const enrollPayload = {
-      order_id,
-      nfc_uid: serial_number,  // Send original serial number to Alan (e.g., "ef:8b:c4:c3")
-      nfc_token: token,  // Send our generated token
-      photo_urls,
-      photo_hashes,
-      shipping_address_gps,
-      customer_phone_last4: customer_phone_last4 || "1234",  // Default to "1234" if not available
-      warehouse_gps: {
-        lat: 40.7580,
-        lng: -73.9855
-      }
-    };
-
-    let nfsResponse: { proof_id: string; enrollment_status: string; key_id: string } | null = null;
-    let nfsError: string | null = null;
-
-    try {
-      nfsResponse = await NFSService.enroll(enrollPayload);
-      console.log(`✅ NFS enrollment successful: ${nfsResponse.proof_id}`);
-
-      // Update local Proof record with NFS response
-      await prisma.proof.update({
-        where: { proof_id: localProofId },
-        data: {
-          nfs_proof_id: nfsResponse.proof_id,
-          enrollment_status: nfsResponse.enrollment_status,
-          key_id: nfsResponse.key_id,
-        },
-      });
-      console.log("✅ Local database updated with NFS response");
-
-    } catch (error: any) {
-      nfsError = error.message || "NFS enrollment failed";
-      console.error("⚠️ NFS enrollment failed, but data saved locally:", nfsError);
-      // Don't return error - we have local backup
-    }
-
-    // 4. Update Shopify Metafields
+    // 3. Update Shopify Metafields with proof_id for later retrieval
+    // This is the ONLY place we store a reference to the proof
     console.log("📝 Updating order metafields...");
     try {
       const numericOrderId = order_id.replace(/\D/g, '');
@@ -211,21 +167,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           namespace: INK_NAMESPACE,
           key: "proof_reference",
           type: "single_line_text_field",
-          value: nfsResponse?.proof_id || localProofId,
+          value: nfsResponse.proof_id,  // Store Alan's proof_id for retrieval
         },
         {
           ownerId: orderGid,
           namespace: INK_NAMESPACE,
           key: "verification_status",
           type: "single_line_text_field",
-          value: nfsResponse ? "enrolled" : "enrolled_local_only",
+          value: "enrolled",
         },
         {
           ownerId: orderGid,
           namespace: INK_NAMESPACE,
           key: "nfc_uid",
           type: "single_line_text_field",
-          value: uid,
+          value: serial_number,  // Store original serial for reference
         },
       ];
 
@@ -237,22 +193,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       `;
 
-      await admin.graphql(mutation, { variables: { metafields } });
-      console.log("✅ Metafields updated successfully");
+      const metaResult = await admin.graphql(mutation, { variables: { metafields } });
+      const metaData = await metaResult.json();
+      
+      if (metaData.data?.metafieldsSet?.userErrors?.length > 0) {
+        console.warn("⚠️ Metafield errors:", metaData.data.metafieldsSet.userErrors);
+      } else {
+        console.log("✅ Metafields updated successfully");
+      }
     } catch (metaError) {
       console.error("⚠️ Metafield update failed:", metaError);
-      // Don't fail the request - enrollment is already saved
+      // Don't fail the request - enrollment is already saved in Alan's API
     }
 
     await prisma.$disconnect();
 
-    // Return success with proof_id
+    // Return success with proof_id from Alan's API
     return new Response(
       JSON.stringify({
         success: true,
-        proof_id: nfsResponse?.proof_id || localProofId,
-        nfs_status: nfsResponse ? "success" : "failed_local_backup",
-        ...(nfsError && { nfs_error: nfsError }),
+        proof_id: nfsResponse.proof_id,
+        enrollment_status: nfsResponse.enrollment_status,
+        key_id: nfsResponse.key_id,
       }),
       {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" }

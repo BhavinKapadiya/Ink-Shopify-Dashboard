@@ -1,6 +1,5 @@
 import { type ActionFunctionArgs } from "react-router";
 import crypto from "crypto";
-import { authenticate } from "../shopify.server";
 import { INK_NAMESPACE } from "../utils/metafields.server";
 
 const CORS_HEADERS = {
@@ -20,6 +19,9 @@ export const loader = async () => {
 /**
  * Webhook endpoint for Alan's NFS system
  * Receives verification events after /verify completes
+ * 
+ * NOTE: No local database update - Alan's API is the single source of truth
+ * We only update Shopify Order metafields for display purposes
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   console.log("\n🔔 =================================================");
@@ -28,6 +30,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   console.log("🔔 Method:", request.method);
   console.log("🔔 =================================================\n");
 
+  // We still need Prisma for Session table (Shopify auth)
   const { PrismaClient } = await import("@prisma/client");
   const prisma = new PrismaClient();
 
@@ -105,29 +108,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // 4. Update local database
-    console.log("💾 Updating local database...");
-    try {
-      await prisma.proof.updateMany({
-        where: { order_id },
-        data: {
-          delivery_timestamp: timestamp ? new Date(timestamp) : new Date(),
-          delivery_gps: delivery_gps ? JSON.stringify(delivery_gps) : undefined,
-          gps_verdict,
-          phone_verified: status === "verified",
-        },
-      });
-      console.log("✅ Local database updated");
-    } catch (dbError: any) {
-      console.error("⚠️ Database update failed:", dbError.message);
-      // Continue to update Shopify even if DB fails
-    }
+    // NOTE: No local database update needed
+    // Alan's API is the single source of truth for all proof data
+    console.log("ℹ️ Skipping local DB update - Alan's API is source of truth");
 
-    // 5. Update Shopify order metafields
+    // 4. Update Shopify order metafields
     console.log("📝 Updating Shopify order metafields...");
     try {
-      // Get Shopify session (using admin API)
-      const { admin, session } = await authenticate.admin(request);
+      // Get Shopify session from database
+      const session = await prisma.session.findFirst({
+        where: { isOnline: false },
+      });
+
+      if (!session) {
+        console.error("❌ No offline session found");
+        await prisma.$disconnect();
+        return new Response(
+          JSON.stringify({ error: "No session available" }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Create admin client
+      const adminGraphql = async (query: string, variables?: any) => {
+        const response = await fetch(`https://${session.shop}/admin/api/2024-10/graphql.json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": session.accessToken,
+          },
+          body: JSON.stringify({ query, variables }),
+        });
+        return response.json();
+      };
 
       const numericOrderId = order_id.replace(/\D/g, "");
       const orderGid = `gid://shopify/Order/${numericOrderId}`;
@@ -173,6 +186,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
       }
 
+      if (delivery_gps) {
+        metafields.push({
+          ownerId: orderGid,
+          namespace: INK_NAMESPACE,
+          key: "delivery_gps",
+          type: "json",
+          value: JSON.stringify(delivery_gps),
+        });
+      }
+
       const mutation = `
         mutation SetVerificationMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -190,11 +213,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       `;
 
-      const response = await admin.graphql(mutation, {
-        variables: { metafields },
-      });
-
-      const data = await response.json();
+      const data = await adminGraphql(mutation, { metafields });
 
       if (data.data?.metafieldsSet?.userErrors?.length > 0) {
         console.error("⚠️ Shopify metafield errors:", data.data.metafieldsSet.userErrors);

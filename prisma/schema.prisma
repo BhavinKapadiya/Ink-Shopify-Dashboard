@@ -10,6 +10,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Session table - REQUIRED for Shopify OAuth
+// DO NOT REMOVE - This is necessary for Shopify app authentication
 model Session {
   id            String    @id
   shop          String
@@ -28,40 +30,9 @@ model Session {
   emailVerified Boolean?  @default(false)
 }
 
-model Proof {
-  proof_id             String    @id @default(cuid())
-  order_id             String
-  nfc_uid              String
-  nfc_token            String    @unique
-  enrollment_timestamp DateTime  @default(now())
-  shipping_address_gps String    // Stored as JSON string
-  warehouse_gps        String?   // Stored as JSON string
-  photo_urls           String    // Stored as JSON string
-  photo_hashes         String    // Stored as JSON string
-  customer_phone_last4 String?
-  delivery_timestamp   DateTime?
-  delivery_gps         String?   // Stored as JSON string
-  device_info          String?
-  gps_verdict          String?
-  phone_verified       Boolean?  @default(false)
-  signature            String?
-  key_id               String?   @default("key_001")
-  nfs_proof_id         String?
-  enrollment_status    String?
-  
-  // Alan's API verification response fields
-  verification_status      String?   // e.g., "verified", "flagged"
-  distance_meters          Float?    // Distance between shipping and delivery GPS
-  verify_url               String?   // URL to view verification details on Alan's platform
-  verification_updated_at  DateTime? // Timestamp when Alan's verification data was last updated
-  
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-}
-
-// model WarehouseUser {
-//   id       String @id @default(cuid())
-//   username String @unique
-//   password String // Store hashed password
-//   role     String // "warehouse" or "delivery"
-// }
+// ============================================================
+// REMOVED: Proof model
+// ============================================================
+// All proof data is now stored in Alan's NFS API (single source of truth)
+// The proof_id is stored in Shopify Order metafields for later retrieval
+// ============================================================

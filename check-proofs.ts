@@ -1,41 +1,17 @@
-import { PrismaClient } from "@prisma/client";
+// ============================================================
+// DEPRECATED: check-proofs.ts
+// ============================================================
+// This utility was used to check local Proof records in the database.
+// Since we've removed the local Proof table and now use Alan's NFS API
+// as the single source of truth, this script is no longer needed.
+//
+// To check proof data, use Alan's API directly:
+//   GET http://193.57.137.90/retrieve/{proof_id}
+//
+// Or check Shopify Order metafields for proof_reference
+// ============================================================
 
-const prisma = new PrismaClient();
-
-async function main() {
-  const dbUrl = process.env.DATABASE_URL || "";
-  const maskedUrl = dbUrl.replace(/:[^:@]+@/, ":****@");
-  console.log(`🔍 Checking Proof records in database...`);
-  console.log(`🔌 Connecting to: ${maskedUrl}`);
-  
-  try {
-    const proofs = await prisma.proof.findMany({
-      orderBy: { enrollment_timestamp: 'desc' },
-      take: 5
-    });
-
-    if (proofs.length === 0) {
-      console.log("⚠️ No proofs found in the database.");
-    } else {
-      console.log(`✅ Found ${proofs.length} recent proofs:`);
-      proofs.forEach((p) => {
-        console.log("------------------------------------------------");
-        console.log(`🆔 Proof ID: ${p.proof_id}`);
-        console.log(`📦 Order ID: ${p.order_id}`);
-        console.log(`🏷️ NFC UID: ${p.nfc_uid}`);
-        console.log(`☁️ NFS Proof ID: ${p.nfs_proof_id || "N/A"}`);
-        console.log(`📊 Status: ${p.enrollment_status || "N/A"}`);
-        console.log(`🔑 Key ID: ${p.key_id || "N/A"}`);
-        console.log(`📅 Time: ${p.enrollment_timestamp.toLocaleString()}`);
-        console.log("RAW JSON:", JSON.stringify(p, null, 2));
-      });
-      console.log("------------------------------------------------");
-    }
-  } catch (error) {
-    console.error("❌ Error querying database:", error);
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-main();
+console.log("⚠️ This utility has been deprecated.");
+console.log("📌 Proof data is now stored in Alan's NFS API (single source of truth).");
+console.log("📌 To retrieve proof data, use: GET http://193.57.137.90/retrieve/{proof_id}");
+console.log("📌 The proof_id is stored in Shopify Order metafields (key: 'proof_reference').");

@@ -213,12 +213,9 @@ export const loader = async ({
     params,
 }: LoaderFunctionArgs): Promise<LoaderData> => {
     const { admin } = await authenticate.admin(request);
-    const { PrismaClient } = await import("@prisma/client");
-    const prisma = new PrismaClient();
     const { orderId } = params;
 
     if (!orderId) {
-        await prisma.$disconnect();
         return { order: null, error: "Order ID is required" };
     }
 
@@ -285,44 +282,80 @@ export const loader = async ({
         const result = await response.json();
 
         if (!result.data?.order) {
-            await prisma.$disconnect();
             return { order: null, error: "Order not found" };
         }
 
         const orderData = result.data.order;
 
-        // 1. Fetch local proof using Order Number (e.g. "1003") derived from Name (e.g. "#1003")
-        const orderNumber = orderData.name.replace("#", "");
-        console.log(`🔍 Order Details Loader: Fetching proof for Order #${orderNumber} (Shopify ID: ${orderId})`);
-
-        const proof = await prisma.proof.findFirst({
-            where: { order_id: orderNumber },
-        }) as Proof | null;
-        console.log(`✅ Order Details Loader: Proof found? ${!!proof}`);
-
-        // Extract metafields
+        // Extract metafields from Shopify
         const metafields: OrderDetail["metafields"] = {};
         orderData.metafields.edges.forEach((edge: any) => {
             metafields[edge.node.key as keyof OrderDetail["metafields"]] =
                 edge.node.value;
         });
 
+        // Get proof_id from metafields (stored during enrollment)
+        const proofId = metafields.proof_reference;
+        console.log(`🔍 Order Details Loader: Order ${orderId}, Proof ID from metafields: ${proofId || "none"}`);
+
+        // Fetch proof data from Alan's API if we have a proof_id
+        let alanProofData: {
+            verification_status: string | null;
+            verify_url: string | null;
+            verification_updated_at: string | null;
+            distance_meters: number | null;
+            gps_verdict: string | null;
+            enrollment_status: string | null;
+            nfc_uid: string | null;
+            shipping_gps: string | null;
+            delivery_gps: string | null;
+            photo_urls: string[] | null;
+        } | null = null;
+
+        if (proofId) {
+            try {
+                // Import NFSService to call Alan's API
+                const { NFSService } = await import("../services/nfs.server");
+                const proofResponse = await NFSService.retrieveProof(proofId);
+                
+                console.log(`✅ Proof data retrieved from Alan's API`);
+                
+                alanProofData = {
+                    verification_status: proofResponse.delivery?.gps_verdict ? "verified" : "enrolled",
+                    verify_url: `https://in.ink/verify/${proofId}`,
+                    verification_updated_at: proofResponse.delivery?.timestamp || null,
+                    distance_meters: null, // Not returned by /retrieve, only /verify
+                    gps_verdict: proofResponse.delivery?.gps_verdict || null,
+                    enrollment_status: "enrolled",
+                    nfc_uid: null, // Not returned in retrieve response
+                    shipping_gps: proofResponse.enrollment?.shipping_address_gps 
+                        ? JSON.stringify(proofResponse.enrollment.shipping_address_gps) 
+                        : null,
+                    delivery_gps: proofResponse.delivery?.delivery_gps 
+                        ? JSON.stringify(proofResponse.delivery.delivery_gps) 
+                        : null,
+                    photo_urls: proofResponse.enrollment?.photo_urls || null,
+                };
+            } catch (alanError: any) {
+                console.error(`⚠️ Failed to fetch proof from Alan's API:`, alanError.message);
+                // Continue without proof data - don't fail the whole page
+            }
+        }
+
         // Determine normalized display status
         let displayStatus = "Pending";
-        const rawStatus = proof ? (proof.enrollment_status || "") : (metafields.verification_status || "");
-
-        if (rawStatus.toLowerCase() === "verified") {
+        if (alanProofData?.verification_status === "verified") {
+            displayStatus = "Verified";
+        } else if (alanProofData?.enrollment_status === "enrolled" || metafields.verification_status === "enrolled") {
             displayStatus = "Enrolled";
         }
 
         metafields.verification_status = displayStatus;
 
-        // OVERRIDE metafields with local proof data if available
-        if (proof) {
-            metafields.nfc_uid = proof.nfc_uid || undefined;
-            metafields.proof_reference = (proof.nfs_proof_id || proof.proof_id) || undefined;
-            metafields.photos_hashes = proof.photo_hashes || undefined;
-            metafields.delivery_gps = (proof.delivery_gps || proof.shipping_address_gps) || undefined; // Fallback to shipping GPS if delivery not set
+        // Use data from Alan's API if available, otherwise fall back to metafields
+        if (alanProofData) {
+            metafields.nfc_uid = metafields.nfc_uid || alanProofData.nfc_uid || undefined;
+            metafields.delivery_gps = alanProofData.delivery_gps || alanProofData.shipping_gps || metafields.delivery_gps;
         }
 
         // Extract products
@@ -350,20 +383,19 @@ export const loader = async ({
             shippingAddress: orderData.shippingAddress || null,
             products,
             metafields,
-            localProof: proof ? {
-                verification_status: proof.verification_status,
-                verify_url: proof.verify_url,
-                verification_updated_at: proof.verification_updated_at ? proof.verification_updated_at.toISOString() : null,
-                distance_meters: proof.distance_meters,
-                gps_verdict: proof.gps_verdict,
+            // Use Alan's API data for localProof (renamed but same structure)
+            localProof: alanProofData ? {
+                verification_status: alanProofData.verification_status,
+                verify_url: alanProofData.verify_url,
+                verification_updated_at: alanProofData.verification_updated_at,
+                distance_meters: alanProofData.distance_meters,
+                gps_verdict: alanProofData.gps_verdict,
             } : null,
         };
 
-        await prisma.$disconnect();
         return { order, error: null };
     } catch (error) {
         console.error("Loader error:", error);
-        await prisma.$disconnect();
         return { order: null, error: "Failed to load order" };
     }
 };

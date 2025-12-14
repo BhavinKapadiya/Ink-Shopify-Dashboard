@@ -3,14 +3,6 @@ import { useLoaderData, Link } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../../shopify.server";
 
-// Local interface for Proof since Prisma export is failing
-interface Proof {
-    order_id: string;
-    enrollment_status: string | null;
-    nfc_uid: string | null;
-    nfs_proof_id: string | null;
-}
-
 // Define types for our data
 interface Order {
     id: string;
@@ -25,7 +17,7 @@ interface Order {
     verificationStatus: string;
     nfcUid: string;
     hasProof: boolean;
-    nfsProofId: string;
+    proofId: string;
 }
 
 interface LoaderData {
@@ -38,22 +30,13 @@ interface StatusBadge {
     text: string;
 }
 
-// Loader: Fetch orders and local proofs
+// Loader: Fetch orders with metafields from Shopify
+// NOTE: No local database query - Alan's API is single source of truth
+// Metafields stored in Shopify provide quick status info
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin } = await authenticate.admin(request);
-    const { PrismaClient } = await import("@prisma/client");
-    const prisma = new PrismaClient();
 
-    // 1. Fetch local proofs
-    console.log("🔍 Dashboard Loader: Fetching proofs...");
-    const proofs = await prisma.proof.findMany() as Proof[];
-    console.log(`✅ Dashboard Loader: Found ${proofs.length} proofs.`);
-    if (proofs.length > 0) {
-        console.log("🔍 Sample Proof IDs:", proofs.slice(0, 3).map(p => p.order_id).join(", "));
-    }
-    const proofMap = new Map(proofs.map(p => [p.order_id, p]));
-
-    // 2. GraphQL query to fetch orders
+    // GraphQL query to fetch orders WITH metafields
     const query = `
     query GetOrders {
       orders(first: 50, reverse: true) {
@@ -75,6 +58,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               lastName
               email
             }
+            metafields(namespace: "ink", first: 5) {
+              edges {
+                node {
+                  key
+                  value
+                }
+              }
+            }
           }
         }
       }
@@ -85,17 +76,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const response = await admin.graphql(query);
         const data = await response.json();
 
-        // 3. Merge Shopify data with Local Proof data
+        // Map Shopify data with metafields for status
         const orders: Order[] = data.data?.orders?.edges?.map((edge: any) => {
             const order = edge.node;
             const numericId = order.id.replace("gid://shopify/Order/", "");
 
-            // Proofs are stored by Order Number (e.g. "1003"), not Shopify ID
-            // order.name is usually "#1003", so we strip the "#"
-            const orderNumber = order.name.replace("#", "");
+            // Extract metafields
+            const metafields: Record<string, string> = {};
+            order.metafields?.edges?.forEach((mfEdge: any) => {
+                metafields[mfEdge.node.key] = mfEdge.node.value;
+            });
 
-            // Try matching by order number first (most likely), then by numeric ID (fallback)
-            const proof = proofMap.get(orderNumber) || proofMap.get(numericId);
+            // Determine verification status from metafields
+            const verificationStatus = metafields.verification_status || "Pending";
+            const hasProof = !!metafields.proof_reference;
+            const nfcUid = metafields.nfc_uid || "";
+            const proofId = metafields.proof_reference || "";
 
             return {
                 id: numericId,
@@ -109,19 +105,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     ? `${order.customer.firstName} ${order.customer.lastName}`
                     : "Guest",
                 customerEmail: order.customer?.email || "",
-                // Prioritize local DB status, fallback to "Pending"
-                verificationStatus: proof?.enrollment_status || (proof ? "Enrolled (Local)" : "Pending"),
-                nfcUid: proof?.nfc_uid || "",
-                hasProof: !!proof,
-                nfsProofId: proof?.nfs_proof_id || "",
+                verificationStatus,
+                nfcUid,
+                hasProof,
+                proofId,
             };
         }) || [];
 
-        await prisma.$disconnect();
         return { orders };
     } catch (error) {
         console.error("Error fetching orders:", error);
-        await prisma.$disconnect();
         return { orders: [] };
     }
 };
@@ -131,10 +124,14 @@ function getStatusBadge(status: string): StatusBadge {
     const statusLower = status ? status.toLowerCase() : "pending";
 
     if (statusLower === "verified") {
-        return { tone: "success", icon: "✅", text: "Enrolled" };
+        return { tone: "success", icon: "✅", text: "Verified" };
+    }
+    
+    if (statusLower === "enrolled") {
+        return { tone: "info", icon: "📦", text: "Enrolled" };
     }
 
-    // Everything else (Pending, Enrolled (Local), etc) shows as Pending
+    // Everything else shows as Pending
     return { tone: "attention", icon: "⏳", text: "Pending" };
 }
 
@@ -187,6 +184,18 @@ export default function DashboardHome() {
                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#008060" }}>
                             {orders.filter((o: Order) => o.verificationStatus.toLowerCase() === "verified").length}
                         </div>
+                        <div style={{ color: "#6d7175", fontSize: "14px" }}>Verified</div>
+                    </div>
+
+                    <div style={{
+                        padding: "16px",
+                        background: "#f6f6f7",
+                        borderRadius: "8px",
+                        border: "1px solid #e1e3e5"
+                    }}>
+                        <div style={{ fontSize: "24px", fontWeight: "bold", color: "#0066cc" }}>
+                            {orders.filter((o: Order) => o.verificationStatus.toLowerCase() === "enrolled").length}
+                        </div>
                         <div style={{ color: "#6d7175", fontSize: "14px" }}>Enrolled</div>
                     </div>
 
@@ -197,7 +206,10 @@ export default function DashboardHome() {
                         border: "1px solid #e1e3e5"
                     }}>
                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#ffa500" }}>
-                            {orders.filter((o: Order) => o.verificationStatus.toLowerCase() !== "verified").length}
+                            {orders.filter((o: Order) => 
+                                o.verificationStatus.toLowerCase() !== "verified" && 
+                                o.verificationStatus.toLowerCase() !== "enrolled"
+                            ).length}
                         </div>
                         <div style={{ color: "#6d7175", fontSize: "14px" }}>Pending</div>
                     </div>
@@ -300,12 +312,12 @@ export default function DashboardHome() {
                                                 )}
                                                 {order.nfcUid && (
                                                     <div style={{ fontSize: "11px", color: "#0066cc", marginTop: "2px" }}>
-                                                        🏷️ UID: {order.nfcUid}
+                                                        🏷️ UID: {order.nfcUid.substring(0, 12)}...
                                                     </div>
                                                 )}
-                                                {order.nfsProofId && (
+                                                {order.proofId && (
                                                     <div style={{ fontSize: "10px", color: "#666", marginTop: "2px" }}>
-                                                        🆔 NFS: {order.nfsProofId.slice(0, 10)}...
+                                                        🆔 Proof: {order.proofId.slice(0, 10)}...
                                                     </div>
                                                 )}
                                             </td>

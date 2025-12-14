@@ -1,4 +1,5 @@
 import { type LoaderFunctionArgs } from "react-router";
+import { NFSService } from "../services/nfs.server";
 
 const CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -31,35 +32,27 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
     }
 
     try {
-        // Simply proxy the request to Alan's server
-        const NFS_API_URL = process.env.NFS_API_URL || "https://us-central1-inink-c76d3.cloudfunctions.net/api";
-        const alanUrl = `${NFS_API_URL}/retrieve/${proofId}`;
-
-        console.log(`🚀 Proxying to Alan's server: ${alanUrl}`);
-
-        const alanResponse = await fetch(alanUrl, {
-            method: "GET",
-        });
-
-        if (!alanResponse.ok) {
-            const errorText = await alanResponse.text();
-            console.error("❌ Alan's server error:", errorText);
-            return new Response(
-                JSON.stringify({ error: `Retrieve service error: ${errorText}` }),
-                { status: alanResponse.status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-            );
-        }
-
-        const alanData = await alanResponse.json();
-        console.log("✅ Alan's server response received");
+        // Call Alan's API directly - it's the single source of truth
+        console.log(`🚀 Calling Alan's NFS API /retrieve/${proofId}...`);
+        
+        const proofData = await NFSService.retrieveProof(proofId);
+        console.log("✅ Proof data retrieved from Alan's API");
 
         // Return Alan's response with CORS headers
-        return new Response(JSON.stringify(alanData), {
+        return new Response(JSON.stringify(proofData), {
             headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
         });
 
     } catch (error: any) {
         console.error("❌ Retrieve error:", error);
+        
+        if (error.message?.includes("Proof not found")) {
+            return new Response(
+                JSON.stringify({ error: "Proof not found" }),
+                { status: 404, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+            );
+        }
+        
         return new Response(
             JSON.stringify({ error: error.message || "Retrieve failed" }),
             { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
