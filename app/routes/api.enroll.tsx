@@ -102,6 +102,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const orderResponse = await admin.graphql(orderQuery, { variables: { id: orderGid } });
       const orderData = await orderResponse.json();
+      
+      if (!orderData?.data?.order) {
+        console.error(`❌ Order not found in Shopify: ${orderGid}`);
+        await prisma.$disconnect();
+        return new Response(
+          JSON.stringify({ error: `Order not found: ${order_id}. Please ensure you are using the internal Order ID, not the visible Order Number.` }),
+          {
+            status: 404,
+            headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
+          }
+        );
+      }
+
       const customerPhone = orderData.data?.order?.customer?.phone;
 
       if (customerPhone) {
@@ -114,7 +127,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     } catch (phoneError) {
       console.error("Error fetching customer phone:", phoneError);
-      // Continue enrollment even if phone fetch fails
+      // If we can't context Shopify for some reason (e.g. auth error), we should probably fail safest
+      // But adhering to 'resilience', maybe we continue? 
+      // NO, if we can't talk to Shopify, we can't update metafields later. So we should fail.
+      await prisma.$disconnect();
+      return new Response(
+        JSON.stringify({ error: "Failed to validate order with Shopify." }),
+        { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
     }
 
     // 2. Call Alan's NFS API to Enroll
