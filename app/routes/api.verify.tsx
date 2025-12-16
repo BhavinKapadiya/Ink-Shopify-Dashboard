@@ -66,7 +66,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const session = await prisma.session.findFirst({ where: { isOnline: false } });
                 
                 if (session) {
-                if (session) {
                     // Find order by Proof Reference (returned by Alan)
                     // This is safer than searching by 'nfc_uid' which has colons
                     const proofId = alanData.proof_id;
