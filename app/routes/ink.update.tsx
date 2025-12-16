@@ -143,7 +143,49 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       };
 
       const numericOrderId = order_id.replace(/\D/g, "");
-      const orderGid = `gid://shopify/Order/${numericOrderId}`;
+      // Initial guess
+      let orderGid = `gid://shopify/Order/${numericOrderId}`;
+
+      // --- RESILIENT ORDER LOOKUP ---
+      // Check if this ID actually exists. If not, try searching by name (order number).
+      
+      const checkOrderQuery = `#graphql
+        query CheckOrder($id: ID!) {
+          order(id: $id) { id }
+        }
+      `;
+      
+      const checkResult = await adminGraphql(checkOrderQuery, { id: orderGid });
+      
+      if (!checkResult?.data?.order) {
+         console.warn(`⚠️ Direct ID lookup failed for ${orderGid} in webhook. Trying lookup by name #${numericOrderId}...`);
+         
+         const nameQuery = `#graphql
+           query FindOrderByName($query: String!) {
+             orders(first: 1, query: $query) {
+               edges { node { id } }
+             }
+           }
+         `;
+         
+         const searchResult = await adminGraphql(nameQuery, { query: `name:${numericOrderId}` });
+         
+         if (searchResult?.data?.orders?.edges?.length > 0) {
+           const foundId = searchResult.data.orders.edges[0].node.id;
+           console.log(`✅ Found proper GID from name: ${foundId}`);
+           orderGid = foundId;
+         } else {
+            // Try with hash prefix
+            const searchResult2 = await adminGraphql(nameQuery, { query: `name:#${numericOrderId}` });
+            if (searchResult2?.data?.orders?.edges?.length > 0) {
+               const foundId = searchResult2.data.orders.edges[0].node.id;
+               console.log(`✅ Found proper GID from name (#): ${foundId}`);
+               orderGid = foundId;
+            } else {
+               console.error(`❌ Could not find order ${order_id} by ID or Name. Metafield update will likely fail.`);
+            }
+         }
+      }
 
       const metafields = [
         {

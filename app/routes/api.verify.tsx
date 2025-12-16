@@ -70,7 +70,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     // Find order by NFC UID in metafields
                     const query = `#graphql
                         query FindOrderByMetafield {
-                            orders(first: 1, query: "metafield:${INK_NAMESPACE}.nfc_uid:${serial_number}") {
+                            orders(first: 1, query: "metafield:${INK_NAMESPACE}.nfc_uid:'${serial_number}'") {
                                 edges {
                                     node {
                                         id
