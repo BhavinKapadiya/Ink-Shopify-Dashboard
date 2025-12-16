@@ -40,6 +40,11 @@ export const EmailService = {
         <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
           <p style="margin-bottom: 15px;">Your permanent proof record is now available.</p>
           <a href="${proofUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">View Delivery Proof</a>
+          
+          <p style="margin-top: 20px; font-size: 14px; color: #666;">
+            Or copy this link: <br/>
+            <a href="${proofUrl}" style="color: #007bff; word-break: break-all;">${proofUrl}</a>
+          </p>
         </div>
 
         <p>You can use this link anytime for:</p>
