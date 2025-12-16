@@ -21,9 +21,12 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_assigned_fulfillment_orders,read_customers,read_files,read_fulfillments,read_metaobjects,read_online_store_pages,read_orders,write_assigned_fulfillment_orders,write_files,write_fulfillments,write_metaobjects,write_online_store_pages,write_orders,write_themes"
+scopes = "read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_files,write_files,read_fulfillments,write_fulfillments,read_metaobjects,write_metaobjects,read_online_store_pages,write_online_store_pages,read_orders,write_orders,write_themes"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://shopifyapp.terzettoo.com/auth/callback" ]
+redirect_urls = [
+  "https://shopifyapp.terzettoo.com/auth/callback",
+  "https://shopifyapp.terzettoo.com/auth/shopify/callback"
+]
