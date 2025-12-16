@@ -266,7 +266,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // --- SEND EMAIL NOTIFICATION ---
       // Only send email when status is "verified"
       if (status === "verified" && verify_url) {
-        console.log("📧 Sending verification email notification...");
+        console.log("\n📧 ================================================");
+        console.log("📧 STARTING EMAIL NOTIFICATION PROCESS");
+        console.log("📧 Order GID:", orderGid);
+        console.log("📧 Verify URL:", verify_url);
+        console.log("📧 ================================================\n");
         
         try {
           // Fetch customer email from the order
@@ -282,26 +286,49 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
           `;
           
+          console.log("📧 Fetching order details for email...");
+          console.log("📧 GraphQL Query:", orderQuery);
+          console.log("📧 Variables:", { id: orderGid });
+          
           const orderData = await adminGraphql(orderQuery, { id: orderGid });
           
+          console.log("📧 Shopify Response:", JSON.stringify(orderData, null, 2));
+          
           if (orderData?.data?.order?.customer?.email) {
+            const customerEmail = orderData.data.order.customer.email;
+            const customerName = orderData.data.order.customer.firstName || "Customer";
+            const orderName = orderData.data.order.name;
+            
+            console.log("✅ Order found for email:");
+            console.log("   - Order Name:", orderName);
+            console.log("   - Customer Name:", customerName);
+            console.log("   - Customer Email:", customerEmail);
+            
             const { EmailService } = await import("../services/email.server");
             
+            console.log("📧 Calling EmailService.sendVerificationEmail...");
+            
             await EmailService.sendVerificationEmail({
-              to: orderData.data.order.customer.email,
-              customerName: orderData.data.order.customer.firstName || "Customer",
-              orderName: orderData.data.order.name,
+              to: customerEmail,
+              customerName: customerName,
+              orderName: orderName,
               proofUrl: verify_url,
             });
             
-            console.log(`✅ Verification email sent to ${orderData.data.order.customer.email}`);
+            console.log(`✅ Verification email sent successfully to ${customerEmail}`);
           } else {
             console.warn("⚠️ Order found but no customer email available");
+            console.warn("⚠️ Order data:", JSON.stringify(orderData, null, 2));
           }
         } catch (emailError: any) {
           console.error("❌ Failed to send email:", emailError.message);
+          console.error("❌ Full error:", emailError);
           // Don't fail the webhook if email fails
         }
+        
+        console.log("📧 Email notification process completed\n");
+      } else {
+        console.log(`ℹ️ Skipping email notification (status: ${status}, verify_url: ${verify_url ? "present" : "missing"})`);
       }
     } catch (shopifyError: any) {
       console.error("❌ Shopify update failed:", shopifyError.message);
