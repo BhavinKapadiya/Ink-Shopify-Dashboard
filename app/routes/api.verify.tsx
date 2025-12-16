@@ -66,11 +66,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const session = await prisma.session.findFirst({ where: { isOnline: false } });
                 
                 if (session) {
-                    // Find order by NFC UID in metafields
-                    // Find order by NFC UID in metafields
+                if (session) {
+                    // Find order by Proof Reference (returned by Alan)
+                    // This is safer than searching by 'nfc_uid' which has colons
+                    const proofId = alanData.proof_id;
+
+                    console.log(`🔍 Searching for order with proof_reference: ${proofId}`);
+                    
                     const query = `#graphql
                         query FindOrderByMetafield {
-                            orders(first: 1, query: "metafield:${INK_NAMESPACE}.nfc_uid:'${serial_number}'") {
+                            orders(first: 1, query: "metafield:${INK_NAMESPACE}.proof_reference:'${proofId}'") {
                                 edges {
                                     node {
                                         id
@@ -97,15 +102,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     const result = await response.json();
                     const orderNode = result.data?.orders?.edges?.[0]?.node;
 
-                    if (orderNode?.customer?.email) {
-                        await EmailService.sendVerificationEmail({
-                            to: orderNode.customer.email,
-                            customerName: orderNode.customer.firstName || "Customer",
-                            orderName: orderNode.name,
-                            proofUrl: alanData.verify_url || `https://in.ink/verify/${alanData.proof_id}`,
-                        });
+                    if (orderNode) {
+                        console.log(`✅ Found order for email: ${orderNode.name} (${orderNode.customer?.email || "No Email"})`);
+                        
+                        if (orderNode.customer?.email) {
+                            await EmailService.sendVerificationEmail({
+                                to: orderNode.customer.email,
+                                customerName: orderNode.customer.firstName || "Customer",
+                                orderName: orderNode.name,
+                                proofUrl: alanData.verify_url || `https://in.ink/verify/${alanData.proof_id}`,
+                            });
+                        }
                     } else {
-                        console.warn("⚠️ Could not find order or customer email for notification.");
+                        console.warn(`⚠️ Could not find order linked to proof ${proofId}. Search returned no results.`);
                     }
                 }
                 
