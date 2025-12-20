@@ -1,0 +1,10 @@
+# Learn more about configuring your checkout UI extension at
+# https://shopify.dev/api/checkout-extensions/checkout/configuration
+
+type = "checkout_ui_extension"
+name = "INK Delivery Protection"
+
+# Configure the extension target for checkout
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.tsx"

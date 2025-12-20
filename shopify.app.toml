@@ -30,3 +30,7 @@ redirect_urls = [
   "https://shopifyapp.terzettoo.com/auth/callback",
   "https://shopifyapp.terzettoo.com/auth/shopify/callback"
 ]
+
+# Checkout UI Extension for INK disclosure
+[[extensions.paths]]
+path = "extensions/ink-checkout-disclosure"
