@@ -9,7 +9,8 @@
   "dependencies": {
     "@shopify/ui-extensions": "^2024.10.0",
     "@shopify/ui-extensions-react": "^2024.10.0",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "react-reconciler": "^0.29.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

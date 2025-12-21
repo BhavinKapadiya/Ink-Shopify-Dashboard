@@ -1,10 +1,13 @@
-# Learn more about configuring your checkout UI extension at
-# https://shopify.dev/api/checkout-extensions/checkout/configuration
+api_version = "2025-01"
 
-type = "checkout_ui_extension"
+[[extensions]]
+
+uid = "897ada22-1e96-7904-586f-36a36869cbc89642265a"
+
+type = "ui_extension"
 name = "INK Delivery Protection"
+handle = "ink-checkout-disclosure"
 
-# Configure the extension target for checkout
 [[extensions.targeting]]
-target = "purchase.checkout.block.render"
 module = "./src/Checkout.tsx"
+target = "purchase.checkout.block.render"

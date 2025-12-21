@@ -1,0 +1,21 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "45cc130ef59cbeaf9133acea201981ed"
+name = "Smusic "
+application_url = "https://shopifyapp.terzettoo.com"
+embedded = true
+
+[webhooks]
+api_version = "2025-10"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_files,write_files,read_fulfillments,write_fulfillments,read_metaobjects,write_metaobjects,read_online_store_pages,write_online_store_pages,read_orders,write_orders,write_themes"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://shopifyapp.terzettoo.com/auth/callback",
+  "https://shopifyapp.terzettoo.com/auth/shopify/callback"
+]
