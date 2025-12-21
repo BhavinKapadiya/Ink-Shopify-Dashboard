@@ -287,13 +287,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await prisma.$disconnect();
 
-    // Return success with proof_id from Alan's API
+    // Return success with proof_id from Alan's API and token for NFC writing
     return new Response(
       JSON.stringify({
         success: true,
         proof_id: nfsResponse.proof_id,
         enrollment_status: nfsResponse.enrollment_status,
         key_id: nfsResponse.key_id,
+        token: token,  // Add token for frontend NFC writing
       }),
       {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
