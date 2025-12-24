@@ -1,0 +1,14 @@
+{
+  "name": "INK Shipping Selector",
+  "settings": {
+    "heading": {
+      "label": "Heading"
+    },
+    "standard_price": {
+      "label": "Standard Shipping Price"
+    },
+    "premium_price": {
+      "label": "Premium Shipping Price"
+    }
+  }
+}

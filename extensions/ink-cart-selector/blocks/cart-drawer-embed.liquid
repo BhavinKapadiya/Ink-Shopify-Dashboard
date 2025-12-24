@@ -1,0 +1,85 @@
+{% schema %}
+{
+  "name": "INK Cart Drawer Shipping",
+  "target": "body",
+  "javascript": "cart-drawer-embed.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Shipping Method"
+    },
+    {
+      "type": "text",
+      "id": "standard_title",
+      "label": "Standard Shipping Title",
+      "default": "Standard Shipping"
+    },
+    {
+      "type": "text",
+      "id": "standard_price",
+      "label": "Standard Shipping Price Text",
+      "default": "Free"
+    },
+    {
+      "type": "text",
+      "id": "standard_detail",
+      "label": "Standard Shipping Detail",
+      "default": "5-7 business days"
+    },
+    {
+      "type": "text",
+      "id": "premium_title",
+      "label": "Premium Shipping Title",
+      "default": "Premium Shipping with INK"
+    },
+    {
+      "type": "text",
+      "id": "premium_price",
+      "label": "Premium Shipping Price Text",
+      "default": "$5.00"
+    },
+    {
+      "type": "text",
+      "id": "premium_detail",
+      "label": "Premium Shipping Detail",
+      "default": "2-day delivery"
+    },
+    {
+      "type": "text",
+      "id": "premium_feature_1",
+      "label": "Premium Feature 1",
+      "default": "📦 2-day delivery"
+    },
+    {
+      "type": "text",
+      "id": "premium_feature_2",
+      "label": "Premium Feature 2",
+      "default": "📋 Return Passport for easy returns"
+    },
+    {
+      "type": "text",
+      "id": "premium_variant_id",
+      "label": "Premium Shipping Product Variant ID",
+      "info": "Enter the variant ID of your premium shipping product (e.g., INK Protected Delivery). Find this in Products > [Product] > Variants"
+    }
+  ]
+}
+{% endschema %}
+
+<!-- Hidden container with ALL settings data for JavaScript -->
+<div 
+  id="ink-drawer-settings" 
+  style="display: none !important; visibility: hidden !important; position: absolute !important; left: -9999px !important;"
+  data-heading="{{ block.settings.heading }}"
+  data-standard-title="{{ block.settings.standard_title }}"
+  data-standard-price="{{ block.settings.standard_price }}"
+  data-standard-detail="{{ block.settings.standard_detail }}"
+  data-premium-title="{{ block.settings.premium_title }}"
+  data-premium-price="{{ block.settings.premium_price }}"
+  data-premium-detail="{{ block.settings.premium_detail }}"
+  data-premium-feature-1="{{ block.settings.premium_feature_1 }}"
+  data-premium-feature-2="{{ block.settings.premium_feature_2 }}"
+  data-premium-variant-id="{{ block.settings.premium_variant_id }}"
+></div>

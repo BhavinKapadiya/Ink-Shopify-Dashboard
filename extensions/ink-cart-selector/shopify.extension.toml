@@ -1,0 +1,9 @@
+api_version = "2025-01"
+
+[[extensions]]
+
+uid = "af9de65c-78cf-fce4-4fe5-1f72bd7b679b08722487"
+
+type = "theme"
+name = "INK Cart Shipping Selector"
+handle = "ink-cart-selector"

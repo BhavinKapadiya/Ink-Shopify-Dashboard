@@ -1,0 +1,300 @@
+{% schema %}
+{
+  "name": "INK Shipping Selector",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Shipping Method"
+    },
+    {
+      "type": "text",
+      "id": "standard_price",
+      "label": "Standard Shipping Price",
+      "default": "Free"
+    },
+    {
+      "type": "text",
+      "id": "premium_price",
+      "label": "Premium Shipping Price",
+      "default": "$5.00"
+    }
+  ]
+}
+{% endschema %}
+
+<div class="ink-shipping-selector" id="ink-shipping-selector-{{ section.id }}">
+  <h3 class="ink-heading">{{ section.settings.heading }}</h3>
+  
+  <div class="ink-shipping-options">
+    <!-- Standard Shipping Option -->
+    <label class="ink-option ink-standard" data-option="standard">
+      <input 
+        type="radio" 
+        name="ink_shipping_{{ section.id }}" 
+        value="standard" 
+        checked
+        class="ink-radio"
+      >
+      <div class="ink-option-content">
+        <div class="ink-option-header">
+          <strong class="ink-option-title">Standard Shipping</strong>
+          <span class="ink-price">{{ section.settings.standard_price }}</span>
+        </div>
+        <p class="ink-option-detail">5-7 business days</p>
+      </div>
+    </label>
+    
+    <!-- Premium Shipping with INK Option -->
+    <label class="ink-option ink-premium" data-option="premium">
+      <input 
+        type="radio" 
+        name="ink_shipping_{{ section.id }}" 
+        value="premium"
+        class="ink-radio"
+      >
+      <div class="ink-option-content">
+        <div class="ink-option-header">
+          <div class="ink-title-wrapper">
+            <strong class="ink-option-title">Premium Shipping with INK</strong>
+            <span class="ink-badge">⭐ RECOMMENDED</span>
+          </div>
+          <span class="ink-price">{{ section.settings.premium_price }}</span>
+        </div>
+        <div class="ink-features">
+          <p class="ink-feature">📦 2-day delivery</p>
+          <p class="ink-feature">📋 Return Passport for easy returns</p>
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <!-- Consent Info (shown when Premium selected) -->
+  <div class="ink-consent-info" id="ink-consent-{{ section.id }}" style="display: none;">
+    <p class="ink-consent-text">
+      ✓ By selecting Premium Shipping, you consent to INK delivery verification
+    </p>
+  </div>
+</div>
+
+<script>
+(function() {
+  const sectionId = '{{ section.id }}';
+  const radios = document.querySelectorAll('#ink-shipping-selector-' + sectionId + ' input[type="radio"]');
+  const consentInfo = document.getElementById('ink-consent-' + sectionId);
+  const options = document.querySelectorAll('#ink-shipping-selector-' + sectionId + ' .ink-option');
+  
+  // Update visual selection
+  function updateSelection(value) {
+    options.forEach(function(opt) {
+      if (opt.dataset.option === value) {
+        opt.classList.add('ink-selected');
+      } else {
+        opt.classList.remove('ink-selected');
+      }
+    });
+    
+    // Show/hide consent info
+    if (value === 'premium') {
+      consentInfo.style.display = 'block';
+    } else {
+      consentInfo.style.display = 'none';
+    }
+  }
+  
+  // Update cart attributes
+  function updateCartAttributes(isPremium) {
+    fetch('/cart/update.js', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        attributes: {
+          'ink_premium_delivery': isPremium ? 'true' : 'false',
+          'ink_consent_timestamp': isPremium ? new Date().toISOString() : '',
+          'ink_tier': isPremium ? 'premium' : 'authenticate'
+        }
+      })
+    })
+    .then(function(response) {
+      if (response.ok) {
+        console.log('✅ Cart attributes updated:', { isPremium: isPremium });
+        document.dispatchEvent(new CustomEvent('cart:updated'));
+      } else {
+        console.error('❌ Failed to update cart attributes');
+      }
+    })
+    .catch(function(error) {
+      console.error('❌ Error updating cart:', error);
+    });
+  }
+  
+  // Event listeners
+  radios.forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      var isPremium = this.value === 'premium';
+      updateSelection(this.value);
+      updateCartAttributes(isPremium);
+    });
+  });
+  
+  // Initialize with default selection
+  updateSelection('standard');
+})();
+</script>
+
+{% style %}
+.ink-shipping-selector {
+  margin: 24px 0;
+  padding: 20px;
+  background: #f9fafb;
+  border-radius: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+.ink-heading {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ink-shipping-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ink-option {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ink-option:hover {
+  border-color: #9ca3af;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.ink-option.ink-selected {
+  border-color: #000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ink-option.ink-premium.ink-selected {
+  border-color: #000;
+  background: #fffbeb;
+}
+
+.ink-radio {
+  margin-top: 4px;
+  margin-right: 12px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.ink-option-content {
+  flex: 1;
+}
+
+.ink-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.ink-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ink-option-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ink-badge {
+  display: inline-block;
+  background: #000;
+  color: white;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  width: fit-content;
+}
+
+.ink-price {
+  font-weight: 600;
+  font-size: 16px;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.ink-option-detail {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.ink-features {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.ink-feature {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.ink-consent-info {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+}
+
+.ink-consent-text {
+  margin: 0;
+  font-size: 13px;
+  color: #166534;
+}
+
+@media (max-width: 640px) {
+  .ink-shipping-selector {
+    padding: 16px;
+  }
+  
+  .ink-option {
+    padding: 12px;
+  }
+  
+  .ink-option-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .ink-price {
+    align-self: flex-start;
+  }
+}
+{% endstyle %}
