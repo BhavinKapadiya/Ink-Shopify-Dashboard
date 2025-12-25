@@ -31,8 +31,7 @@ interface StatusBadge {
 }
 
 // Loader: Fetch orders with metafields from Shopify
-// NOTE: No local database query - Alan's API is single source of truth
-// Metafields stored in Shopify provide quick status info
+// Only shows orders with INK Protected Delivery (ink_premium_order = true)
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin } = await authenticate.admin(request);
 
@@ -58,7 +57,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               lastName
               email
             }
-            metafields(namespace: "ink", first: 5) {
+            metafields(namespace: "ink", first: 10) {
               edges {
                 node {
                   key
@@ -77,7 +76,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const data = await response.json();
 
         // Map Shopify data with metafields for status
-        const orders: Order[] = data.data?.orders?.edges?.map((edge: any) => {
+        const allOrders: Order[] = data.data?.orders?.edges?.map((edge: any) => {
             const order = edge.node;
             const numericId = order.id.replace("gid://shopify/Order/", "");
 
@@ -92,6 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             const hasProof = !!metafields.proof_reference;
             const nfcUid = metafields.nfc_uid || "";
             const proofId = metafields.proof_reference || "";
+            const isInkOrder = metafields.ink_premium_order === "true";
 
             return {
                 id: numericId,
@@ -109,8 +109,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 nfcUid,
                 hasProof,
                 proofId,
+                isInkOrder,
             };
         }) || [];
+
+        // Filter to only show INK orders (orders with ink_premium_order = true)
+        const orders = allOrders.filter((order: any) => order.isInkOrder);
 
         return { orders };
     } catch (error) {
