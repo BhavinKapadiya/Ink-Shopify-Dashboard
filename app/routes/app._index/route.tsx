@@ -31,11 +31,11 @@ interface StatusBadge {
 }
 
 // Loader: Fetch orders with metafields from Shopify
-// Only shows orders with INK Protected Delivery (ink_premium_order = true)
+// Shows orders with INK Protected Delivery (via metafield OR line item)
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin } = await authenticate.admin(request);
 
-    // GraphQL query to fetch orders WITH metafields
+    // GraphQL query to fetch orders WITH metafields and line items
     const query = `
     query GetOrders {
       orders(first: 50, reverse: true) {
@@ -65,6 +65,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 }
               }
             }
+            lineItems(first: 20) {
+              edges {
+                node {
+                  title
+                  customAttributes {
+                    key
+                    value
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -86,12 +97,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 metafields[mfEdge.node.key] = mfEdge.node.value;
             });
 
+            // Check if INK order via metafield
+            const hasInkMetafield = metafields.ink_premium_order === "true";
+            
+            // Check if INK order via line items (for backward compatibility)
+            let hasInkLineItem = false;
+            for (const lineItem of order.lineItems?.edges || []) {
+                const title = (lineItem.node?.title || "").toLowerCase();
+                if (title.includes("ink delivery") || title.includes("ink protected") || title.includes("ink premium")) {
+                    hasInkLineItem = true;
+                    break;
+                }
+                // Also check custom attributes
+                for (const attr of lineItem.node?.customAttributes || []) {
+                    if (attr.key === "_ink_premium_fee" && attr.value === "true") {
+                        hasInkLineItem = true;
+                        break;
+                    }
+                }
+            }
+            
+            const isInkOrder = hasInkMetafield || hasInkLineItem;
+
             // Determine verification status from metafields
             const verificationStatus = metafields.verification_status || "Pending";
             const hasProof = !!metafields.proof_reference;
             const nfcUid = metafields.nfc_uid || "";
             const proofId = metafields.proof_reference || "";
-            const isInkOrder = metafields.ink_premium_order === "true";
 
             return {
                 id: numericId,
@@ -113,7 +145,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             };
         }) || [];
 
-        // Filter to only show INK orders (orders with ink_premium_order = true)
+        // Filter to only show INK orders
         const orders = allOrders.filter((order: any) => order.isInkOrder);
 
         return { orders };

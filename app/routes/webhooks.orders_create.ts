@@ -37,7 +37,8 @@ function hasInkProduct(lineItems: any[], customAttributes: any[]): boolean {
   for (const edge of lineItems || []) {
     const title = (edge.node?.title || edge.node?.product?.title || "").toLowerCase();
     if (
-      title.includes("ink protected delivery") ||
+      title.includes("ink delivery") ||
+      title.includes("ink protected") ||
       title.includes("ink premium") ||
       title.includes("premium shipping") ||
       title.includes("premium delivery")
