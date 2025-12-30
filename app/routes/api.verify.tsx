@@ -60,9 +60,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // =================================================================
         (async () => {
             try {
-                console.log("\n📧 ================================================");
-                console.log("📧 TESTING MODE: Email on every scan");
-                console.log("📧 ================================================");
+                console.log("\n📧 =================================================");
+                console.log("📧 Sending Return Passport Email");
+                console.log("📧 =================================================");
                 
                 const { PrismaClient } = await import("@prisma/client");
                 const prisma = new PrismaClient();
@@ -75,13 +75,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     return;
                 }
                 
-                // Get order_id from Alan's retrieve API
-                console.log("🔍 Retrieving proof from Alan to get order_id...");
+                // Get order_id and photos from Alan's retrieve API
+                console.log("🔍 Retrieving proof from Alan to get order_id and photos...");
                 const proofData = await NFSService.retrieveProof(alanData.proof_id);
                 console.log("📦 Proof data:", proofData);
                 
                 let orderId = proofData.order_id;
+                const photoUrls = proofData.enrollment?.photo_urls || [];
                 console.log("📦 Order ID from Alan:", orderId);
+                console.log("📸 Photo URLs:", photoUrls);
                 
                 // Extract numeric part (handles both "1015" and "1015***015" formats)
                 const numericOrderId = orderId.replace(/\D/g, '').substring(0, 4); // Get first 4 digits
@@ -133,14 +135,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     if (order.customer?.email) {
                         const { EmailService } = await import("../services/email.server");
                         
-                        await EmailService.sendVerificationEmail({
+                        // Send Return Passport email with photos
+                        await EmailService.sendReturnPassportEmail({
                             to: order.customer.email,
                             customerName: order.customer.firstName || "Customer",
                             orderName: order.name,
                             proofUrl: alanData.verify_url || `https://in.ink/verify/${alanData.proof_id}`,
+                            photoUrls: photoUrls,
+                            returnWindowDays: 30,
+                            merchantName: session.shop.replace('.myshopify.com', ''),
                         });
                         
-                        console.log(`✅ TESTING MODE: Email sent to ${order.customer.email}`);
+                        console.log(`✅ Return Passport email sent to ${order.customer.email}`);
                     } else {
                         console.warn("⚠️ Order found but no customer email");
                     }
@@ -149,9 +155,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 }
                 
                 await prisma.$disconnect();
-                console.log("📧 Testing mode email process completed\n");
+                console.log("📧 Return Passport email process completed\n");
             } catch (emailError) {
-                console.error("❌ Testing mode email failed:", emailError);
+                console.error("❌ Return Passport email failed:", emailError);
             }
         })();
 
