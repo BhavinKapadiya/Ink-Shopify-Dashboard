@@ -12,10 +12,10 @@
     return {
       h: el?.dataset?.heading || 'Shipping Method',
       st: el?.dataset?.standardTitle || 'Standard Shipping',
-      sp: el?.dataset?.standardPrice || 'Free',
+      sp: (el?.dataset?.standardPrice || 'Free').replace(/^free$/i, 'Free'),
       sd: el?.dataset?.standardDetail || '5-7 business days',
       pt: el?.dataset?.premiumTitle || 'ink. Premium Shipping',
-      pp: el?.dataset?.premiumPrice || 'Free',
+      pp: (el?.dataset?.premiumPrice || 'Free').replace(/^free$/i, 'Free'),
       pd: el?.dataset?.premiumDetail || '2-day delivery with verification',
       f1: el?.dataset?.premiumFeature1 || 'Priority handling',
       f2: el?.dataset?.premiumFeature2 || 'Delivery confirmation',
