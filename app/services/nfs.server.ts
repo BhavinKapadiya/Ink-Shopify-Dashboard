@@ -70,7 +70,7 @@ export const NFSService = {
    * Enrolls a package with the NFS backend.
    */
   async enroll(payload: EnrollPayload): Promise<EnrollResponse> {
-    console.log("🚀 Enrolling with NFS Backend:", JSON.stringify(payload, null, 2));
+    console.log("🚀 Enrolling with ink. Backend:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(`${NFS_API_URL}/enroll`, {
       method: "POST",
@@ -82,13 +82,13 @@ export const NFSService = {
 
     if (!response.ok) {
       const errorText = await response.text();
-      
+
       // Log detailed error information
-      console.error(`❌ NFS Enroll Failed [${response.status}]:`, errorText);
+      console.error(`❌ ink. Enroll Failed [${response.status}]:`, errorText);
       console.error(`Response Headers:`, JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2));
       console.error(`Request URL:`, `${NFS_API_URL}/enroll`);
       console.error(`Request Payload:`, JSON.stringify(payload, null, 2));
-      
+
       // Try to parse error as JSON for more details
       let errorDetails = errorText;
       try {
@@ -98,12 +98,12 @@ export const NFSService = {
       } catch {
         // Not JSON, use raw text
       }
-      
-      throw new Error(`NFS Enrollment failed: ${errorText}`);
+
+      throw new Error(`ink. Enrollment failed: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("✅ NFS Enrollment Success:", data);
+    console.log("✅ ink. Enrollment Success:", data);
     return data as EnrollResponse;
   },
   /**
@@ -111,7 +111,7 @@ export const NFSService = {
    * Called when customer scans NFC tag at delivery.
    */
   async verify(payload: VerifyPayload): Promise<VerifyResponse> {
-    console.log("🔍 Verifying with NFS Backend:", JSON.stringify(payload, null, 2));
+    console.log("🔍 Verifying with ink. Backend:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(`${NFS_API_URL}/verify`, {
       method: "POST",
@@ -123,8 +123,8 @@ export const NFSService = {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ NFS Verify Failed [${response.status}]:`, errorText);
-      
+      console.error(`❌ ink. Verify Failed [${response.status}]:`, errorText);
+
       // Check for specific error codes
       if (response.status === 403) {
         throw new Error(`Phone verification required: ${errorText}`);
@@ -132,12 +132,12 @@ export const NFSService = {
       if (response.status === 404) {
         throw new Error(`Tag not enrolled: ${errorText}`);
       }
-      
-      throw new Error(`NFS Verification failed: ${errorText}`);
+
+      throw new Error(`ink. Verification failed: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("✅ NFS Verification Success:", data);
+    console.log("✅ ink. Verification Success:", data);
     return data as VerifyResponse;
   },
 
@@ -146,7 +146,7 @@ export const NFSService = {
    * This is the single source of truth for all proof data.
    */
   async retrieveProof(proofId: string): Promise<RetrieveResponse> {
-    console.log(`📄 Retrieving proof from NFS Backend: ${proofId}`);
+    console.log(`📄 Retrieving proof from ink. Backend: ${proofId}`);
 
     const response = await fetch(`${NFS_API_URL}/retrieve/${proofId}`, {
       method: "GET",
@@ -154,17 +154,17 @@ export const NFSService = {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ NFS Retrieve Failed [${response.status}]:`, errorText);
-      
+      console.error(`❌ ink. Retrieve Failed [${response.status}]:`, errorText);
+
       if (response.status === 404) {
         throw new Error(`Proof not found: ${proofId}`);
       }
-      
-      throw new Error(`NFS Retrieve failed: ${errorText}`);
+
+      throw new Error(`ink. Retrieve failed: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log("✅ NFS Retrieve Success:", data);
+    console.log("✅ ink. Retrieve Success:", data);
     return data as RetrieveResponse;
   },
 

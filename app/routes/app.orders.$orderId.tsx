@@ -858,24 +858,24 @@ export default function OrderDetails() {
                                 </BlockStack>
                             </Card>
 
-                            {/* Verification Details Section - Improved UI */}
+                            {/* ink. Delivery Verification Section */}
                             <Card>
                                 <BlockStack gap="400">
                                     <Text variant="headingMd" as="h2">
-                                        Verification Details
+                                        ink. Delivery Verification
                                     </Text>
 
-                                    {/* Warehouse Section */}
+                                    {/* Pre-Shipment Documentation Section */}
                                     <BlockStack gap="300">
                                         <Text variant="headingSm" as="h3">
-                                            📦 Warehouse Enrollment
+                                            📦 Pre-Shipment Documentation
                                         </Text>
                                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
                                             <BlockStack gap="100">
                                                 <Text variant="bodySm" as="span" tone="subdued">Enrollment Status</Text>
                                                 <div>
-                                                    <Badge tone={order.metafields.verification_status === "Enrolled" ? "success" : "info"}>
-                                                        {order.metafields.verification_status || "Pending"}
+                                                    <Badge tone={order.metafields.verification_status === "Enrolled" ? "info" : "warning"}>
+                                                        {order.metafields.verification_status === "Enrolled" ? "📦 Enrolled" : "🕒 Pending"}
                                                     </Badge>
                                                 </div>
                                             </BlockStack>
@@ -885,7 +885,7 @@ export default function OrderDetails() {
                                                     <Text variant="bodySm" as="span" tone="subdued">NFC Tag UID</Text>
                                                     <Text variant="bodyMd" as="span">
                                                         <span style={{ fontFamily: "monospace", background: "#f1f2f3", padding: "2px 4px", borderRadius: "4px" }}>
-                                                            🏷️ {order.metafields.nfc_uid}
+                                                            {order.metafields.nfc_uid}
                                                         </span>
                                                     </Text>
                                                 </BlockStack>
@@ -894,44 +894,58 @@ export default function OrderDetails() {
                                             {order.metafields.proof_reference && (
                                                 <BlockStack gap="100">
                                                     <Text variant="bodySm" as="span" tone="subdued">Proof ID</Text>
-                                                    <Text variant="bodyMd" as="span">
-                                                        <span style={{ fontFamily: "monospace", background: "#f1f2f3", padding: "2px 4px", borderRadius: "4px" }}>
-                                                            🆔 {order.metafields.proof_reference.substring(0, 12)}...
-                                                        </span>
-                                                    </Text>
+                                                    <InlineStack gap="100">
+                                                        <Text variant="bodyMd" as="span">
+                                                            <span style={{ fontFamily: "monospace", background: "#f1f2f3", padding: "2px 4px", borderRadius: "4px" }}>
+                                                                {order.metafields.proof_reference.substring(0, 8)}...
+                                                            </span>
+                                                        </Text>
+                                                        <Button
+                                                            variant="plain"
+                                                            size="slim"
+                                                            icon="duplicate"
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(order.metafields.proof_reference || "");
+                                                            }}
+                                                        >
+                                                            Copy
+                                                        </Button>
+                                                    </InlineStack>
                                                 </BlockStack>
                                             )}
 
                                             {order.metafields.delivery_gps && (
                                                 <BlockStack gap="100">
                                                     <Text variant="bodySm" as="span" tone="subdued">Warehouse Location</Text>
-                                                    {(() => {
-                                                        const gps = formatGPS(order.metafields.delivery_gps);
-                                                        return gps?.url ? (
-                                                            <Button url={gps.url} external size="slim" variant="plain">
-                                                                📍 {gps.text}
-                                                            </Button>
-                                                        ) : (
-                                                            <Text variant="bodyMd" as="span">📍 {gps?.text || "N/A"}</Text>
-                                                        );
-                                                    })()}
+                                                    <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                                                        {(() => {
+                                                            const gps = formatGPS(order.metafields.delivery_gps);
+                                                            return gps?.url ? (
+                                                                <Button url={gps.url} external size="slim" variant="plain" textAlign="left">
+                                                                    📍 {gps.text}
+                                                                </Button>
+                                                            ) : (
+                                                                <Text variant="bodyMd" as="span">📍 {gps?.text || "N/A"}</Text>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 </BlockStack>
                                             )}
                                         </div>
                                     </BlockStack>
 
-                                    {/* Customer Section */}
+                                    {/* Delivery Confirmation Section */}
                                     {order.localProof?.verification_status && (
                                         <>
                                             <Divider />
                                             <BlockStack gap="300">
                                                 <InlineStack align="space-between">
                                                     <Text variant="headingSm" as="h3">
-                                                        👤 Customer Verification
+                                                        👤 Delivery Confirmation
                                                     </Text>
                                                     {order.localProof.verify_url && (
                                                         <Button url={order.localProof.verify_url} external size="slim">
-                                                            View on NFS Platform ↗
+                                                            View Authentication Record ↗
                                                         </Button>
                                                     )}
                                                 </InlineStack>
@@ -946,10 +960,16 @@ export default function OrderDetails() {
                                                                         ? "success"
                                                                         : order.localProof.verification_status === "flagged"
                                                                             ? "critical"
-                                                                            : "info"
+                                                                            : "warning"
                                                                 }
                                                             >
-                                                                {order.localProof.verification_status.toUpperCase()}
+                                                                {order.localProof.verification_status === "verified" ? (
+                                                                    "✅ VERIFIED"
+                                                                ) : order.localProof.verification_status === "flagged" ? (
+                                                                    "FLAGGED"
+                                                                ) : (
+                                                                    "🕒 Pending"
+                                                                )}
                                                             </Badge>
                                                         </div>
                                                     </BlockStack>
@@ -959,15 +979,6 @@ export default function OrderDetails() {
                                                             <Text variant="bodySm" as="span" tone="subdued">Last Verified</Text>
                                                             <Text variant="bodyMd" as="span">
                                                                 🕐 {formatDate(order.localProof.verification_updated_at)}
-                                                            </Text>
-                                                        </BlockStack>
-                                                    )}
-
-                                                    {order.localProof.distance_meters != null && (
-                                                        <BlockStack gap="100">
-                                                            <Text variant="bodySm" as="span" tone="subdued">Distance from Warehouse</Text>
-                                                            <Text variant="bodyMd" as="span">
-                                                                📏 {Math.round(order.localProof.distance_meters)} meters
                                                             </Text>
                                                         </BlockStack>
                                                     )}

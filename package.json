@@ -1,5 +1,5 @@
 {
-  "name": "test-store",
+  "name": "ink-shipping",
   "private": true,
   "scripts": {
     "build": "react-router build",
@@ -33,7 +33,7 @@
     "@shopify/app-bridge-react": "^4.2.7",
     "@shopify/app-bridge-utils": "^3.5.1",
     "@shopify/polaris": "^13.9.5",
-    "@shopify/shopify-app-react-router": "^1.0.2",  
+    "@shopify/shopify-app-react-router": "^1.0.2",
     "@shopify/shopify-app-session-storage-prisma": "^7.0.0",
     "isbot": "^5.1.31",
     "prisma": "^6.17.1",

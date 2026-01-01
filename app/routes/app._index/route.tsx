@@ -99,7 +99,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
             // Check if INK order via metafield
             const hasInkMetafield = metafields.ink_premium_order === "true";
-            
+
             // Check if INK order via line items (for backward compatibility)
             let hasInkLineItem = false;
             for (const lineItem of order.lineItems?.edges || []) {
@@ -116,7 +116,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     }
                 }
             }
-            
+
             const isInkOrder = hasInkMetafield || hasInkLineItem;
 
             // Determine verification status from metafields
@@ -162,7 +162,7 @@ function getStatusBadge(status: string): StatusBadge {
     if (statusLower === "verified") {
         return { tone: "success", icon: "✅", text: "Verified" };
     }
-    
+
     if (statusLower === "enrolled") {
         return { tone: "info", icon: "📦", text: "Enrolled" };
     }
@@ -193,7 +193,7 @@ export default function DashboardHome() {
 
     return (
         <s-page>
-            <s-section heading="Delivery Verification Dashboard">
+            <s-section heading="ink. Shipping Dashboard">
                 {/* Summary Cards */}
                 <div style={{
                     display: "grid",
@@ -242,8 +242,8 @@ export default function DashboardHome() {
                         border: "1px solid #e1e3e5"
                     }}>
                         <div style={{ fontSize: "24px", fontWeight: "bold", color: "#ffa500" }}>
-                            {orders.filter((o: Order) => 
-                                o.verificationStatus.toLowerCase() !== "verified" && 
+                            {orders.filter((o: Order) =>
+                                o.verificationStatus.toLowerCase() !== "verified" &&
                                 o.verificationStatus.toLowerCase() !== "enrolled"
                             ).length}
                         </div>
