@@ -7,14 +7,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const rawBody = await request.text();
   const signature = request.headers.get("X-INK-Signature");
 
-  console.log("📩 Received NFS Webhook");
+  console.log("📩 Received ink. Webhook");
 
   // 2. Verify Signature
   if (!signature || !NFSService.verifyWebhookSignature(rawBody, signature)) {
-    console.error("❌ Invalid NFS Webhook Signature");
-    return new Response(JSON.stringify({ error: "Invalid signature" }), { 
-      status: 401, 
-      headers: { "Content-Type": "application/json" } 
+    console.error("❌ Invalid ink. Webhook Signature");
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" }
     });
   }
 
@@ -24,9 +24,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     payload = JSON.parse(rawBody);
   } catch (e) {
     console.error("❌ Invalid JSON payload");
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), { 
-      status: 400, 
-      headers: { "Content-Type": "application/json" } 
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
     });
   }
 
@@ -46,7 +46,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { PrismaClient } = await import("@prisma/client");
     const prisma = new PrismaClient();
-    
+
     // Find an offline session (usually one per shop)
     const session = await prisma.session.findFirst({
       where: { isOnline: false },
@@ -54,9 +54,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (!session) {
       console.error("❌ No offline session found to process webhook");
-      return new Response(JSON.stringify({ error: "No session" }), { 
-        status: 500, 
-        headers: { "Content-Type": "application/json" } 
+      return new Response(JSON.stringify({ error: "No session" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
       });
     }
 
@@ -74,7 +74,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             variables: options?.variables || {},
           }),
         });
-        
+
         return await response.json();
       },
     };
@@ -126,7 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await client.request(mutation, { variables: { metafields } });
     await prisma.$disconnect();
-    
+
     console.log(`✅ Metafields updated for Order ${order_id}`);
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" }
@@ -134,9 +134,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   } catch (error) {
     console.error("❌ Error processing webhook:", error);
-    return new Response(JSON.stringify({ error: "Processing failed" }), { 
-      status: 500, 
-      headers: { "Content-Type": "application/json" } 
+    return new Response(JSON.stringify({ error: "Processing failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
     });
   }
 };

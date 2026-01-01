@@ -1,6 +1,6 @@
 {% schema %}
 {
-  "name": "INK Cart Drawer Shipping",
+  "name": "ink. Cart Drawer Shipping",
   "target": "body",
   "javascript": "cart-drawer-embed.js",
   "settings": [
@@ -9,6 +9,10 @@
       "id": "heading",
       "label": "Heading",
       "default": "Shipping Method"
+    },
+    {
+      "type": "header",
+      "content": "Standard Shipping"
     },
     {
       "type": "text",
@@ -29,40 +33,50 @@
       "default": "5-7 business days"
     },
     {
+      "type": "header",
+      "content": "=== PREMIUM SHIPPING CONFIGURATION ==="
+    },
+    {
       "type": "text",
       "id": "premium_title",
       "label": "Premium Shipping Title",
-      "default": "Premium Shipping with INK"
+      "default": "ink. Premium Shipping"
     },
     {
       "type": "text",
       "id": "premium_price",
       "label": "Premium Shipping Price Text",
-      "default": "$5.00"
+      "default": "Free"
     },
     {
       "type": "text",
       "id": "premium_detail",
       "label": "Premium Shipping Detail",
-      "default": "2-day delivery"
+      "default": "2-day delivery with verification"
     },
     {
       "type": "text",
       "id": "premium_feature_1",
       "label": "Premium Feature 1",
-      "default": "📦 2-day delivery"
+      "default": "Priority handling"
     },
     {
       "type": "text",
       "id": "premium_feature_2",
       "label": "Premium Feature 2",
-      "default": "📋 Return Passport for easy returns"
+      "default": "Delivery confirmation"
+    },
+    {
+      "type": "text",
+      "id": "premium_feature_3",
+      "label": "Premium Feature 3",
+      "default": "Easy returns"
     },
     {
       "type": "text",
       "id": "premium_variant_id",
       "label": "Premium Shipping Product Variant ID",
-      "info": "Enter the variant ID of your premium shipping product (e.g., INK Protected Delivery). Find this in Products > [Product] > Variants"
+      "info": "Enter the variant ID of your premium shipping product (e.g., ink. Protected Delivery). Find this in Products > [Product] > Variants"
     }
   ]
 }
@@ -81,5 +95,6 @@
   data-premium-detail="{{ block.settings.premium_detail }}"
   data-premium-feature-1="{{ block.settings.premium_feature_1 }}"
   data-premium-feature-2="{{ block.settings.premium_feature_2 }}"
+  data-premium-feature-3="{{ block.settings.premium_feature_3 }}"
   data-premium-variant-id="{{ block.settings.premium_variant_id }}"
 ></div>
