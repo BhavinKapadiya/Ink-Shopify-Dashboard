@@ -1,13 +1,20 @@
 import type { ActionFunctionArgs } from "react-router";
-import shopify, { authenticate } from "../shopify.server";
+import crypto from "crypto";
 
-const METAFIELD_MUTATION = `
-mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
-  metafieldsSet(metafields: $metafields) {
-    userErrors { field message }
-  }
+// Manual webhook secret from Shopify Admin webhook settings  
+const MANUAL_WEBHOOK_SECRET = "054f24e3c411a8aa92b94aa244127309afe56a89b8f1993e996376abe8d0924b";
+
+/**
+ * Verify manual webhook HMAC signature
+ */
+function verifyManualWebhook(body: string, hmacHeader: string): boolean {
+  const hash = crypto
+    .createHmac("sha256", MANUAL_WEBHOOK_SECRET)
+    .update(body, "utf8")
+    .digest("base64");
+  
+  return hash === hmacHeader;
 }
-`;
 
 const TAG_MUTATION = `
 mutation AddOrderTag($id: ID!, $tags: [String!]!) {
@@ -17,69 +24,13 @@ mutation AddOrderTag($id: ID!, $tags: [String!]!) {
 }
 `;
 
-// Query to get order line items to check for INK product
-const ORDER_QUERY = `
-query GetOrderLineItems($id: ID!) {
-  order(id: $id) {
-    lineItems(first: 50) {
-      edges {
-        node {
-          title
-          product {
-            title
-          }
-        }
-      }
-    }
-    customAttributes {
-      key
-      value
-    }
+const METAFIELD_MUTATION = `
+mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
+  metafieldsSet(metafields: $metafields) {
+    userErrors { field message }
   }
 }
 `;
-
-// Check if an order has Premium Delivery selected
-function hasPremiumDelivery(customAttributes: any[]): boolean {
-  // Check for _ink_delivery_type attribute set by extensions
-  for (const attr of customAttributes || []) {
-    if (attr.key === "_ink_delivery_type" && attr.value === "premium") {
-      return true;
-    }
-  }
-  
-  // Legacy: Also check for INK product in line items (backward compatibility)
-  return false;
-}
-
-// Legacy function - kept for backward compatibility
-function hasInkProduct(lineItems: any[], customAttributes: any[]): boolean {
-  // Check line items for INK product
-  for (const edge of lineItems || []) {
-    const title = (edge.node?.title || edge.node?.product?.title || "").toLowerCase();
-    if (
-      title.includes("ink delivery") ||
-      title.includes("ink protected") ||
-      title.includes("ink premium") ||
-      title.includes("premium shipping") ||
-      title.includes("premium delivery")
-    ) {
-      return true;
-    }
-  }
-  
-  // Also check custom attributes for ink_premium_delivery
-  for (const attr of customAttributes || []) {
-    if (attr.key === "ink_premium_delivery" && attr.value === "true") {
-      return true;
-    }
-    if (attr.key === "_ink_premium_fee" && attr.value === "true") {
-      return true;
-    }
-  }
-  
-  return false;
-}
 
 /**
  * Check if order has INK Premium Delivery shipping method selected
@@ -103,30 +54,41 @@ function hasInkPremiumShipping(shippingLines: any[]): boolean {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { payload, shop, topic, session } = await authenticate.webhook(request);
+  console.log("[orders/create] Webhook received");
+  
+  // Get HMAC header for manual webhook verification
+  const hmacHeader = request.headers.get("X-Shopify-Hmac-SHA256");
+  const shopDomain = request.headers.get("X-Shopify-Shop-Domain");
+  
+  // Get raw body for HMAC verification
+  const rawBody = await request.text();
+  
+  // Verify HMAC signature
+  if (!hmacHeader || !verifyManualWebhook(rawBody, hmacHeader)) {
+    console.error("[orders/create] Invalid HMAC signature");
+    return new Response("Unauthorized", { status: 401 });
+  }
+  
+  console.log(`[orders/create] Authenticated - shop: ${shopDomain}`);
+  
+  // Parse payload
+  const payload = JSON.parse(rawBody);
   const orderGid = payload?.admin_graphql_api_id as string | undefined;
   const orderName = payload?.name || payload?.order_number || "Unknown";
 
-  if (!orderGid || !session) {
-    console.error("[orders/create] Missing order id or session", { shop, topic });
-    return new Response("Missing order or session", { status: 400 });
+  if (!orderGid) {
+    console.error("[orders/create] Missing order id");
+    return new Response("Missing order", { status: 400 });
   }
 
-  // @ts-ignore - shopify.api.clients exists at runtime despite TypeScript error
-  console.log(`\n📦 [orders/create] Processing order ${orderName} (${shop})`);
+  console.log(`\n📦 [orders/create] Processing order ${orderName} (${shopDomain})`);
 
   // DEBUG: Log full shipping data from payload
   console.log("🚢 DEBUG: Full shipping data:");
   console.log("  - shipping_lines:", JSON.stringify(payload?.shipping_lines, null, 2));
-  console.log("  - shipping_line:", JSON.stringify(payload?.shipping_line, null, 2));
 
   // Check shipping lines from the webhook payload
   const shippingLines = payload?.shipping_lines || [];
-  
-  // ALSO check singular shipping_line (some Shopify webhooks use this)
-  if (!shippingLines.length && payload?.shipping_line) {
-    shippingLines.push(payload.shipping_line);
-  }
   
   console.log(`🚢 DEBUG: Found ${shippingLines.length} shipping line(s)`);
   
@@ -139,56 +101,83 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   console.log(`🛡️ [orders/create] Order ${orderName} has INK Premium Delivery!`);
 
-  // @ts-ignore - shopify.api.clients exists at runtime
-  const client = new shopify.api.clients.Graphql({ session });
-
+  // For manual webhooks, we need to create a GraphQL client with shop-specific session
+  // This is a simplified version - you may need to get the session from your database
   try {
-    // Add tag for easy filtering in warehouse app
-    await client.request(TAG_MUTATION, {
-      variables: {
-        id: orderGid,
-        tags: ["INK-Premium-Delivery"]
-      }
-    });
+    // We'll use REST Admin API URL approach for tags since we don't have session
+    const shopifyApiUrl = `https://${shopDomain}/admin/api/2024-10/graphql.json`;
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN; // You need to set this in .env
     
+    if (!accessToken) {
+      console.error("[orders/create] Missing SHOPIFY_ACCESS_TOKEN");
+      return new Response("Configuration error", { status: 500 });
+    }
+
+    // Add tag using GraphQL Admin API
+    const tagResponse = await fetch(shopifyApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({
+        query: TAG_MUTATION,
+        variables: {
+          id: orderGid,
+          tags: ["INK-Premium-Delivery"]
+        }
+      })
+    });
+
+    const tagResult = await tagResponse.json();
     console.log(`✅ [orders/create] Tagged order ${orderName} with "INK-Premium-Delivery"`);
 
     // Set initial metafields for INK Premium orders
-    const variables = {
-      metafields: [
-        {
-          ownerId: orderGid,
-          namespace: "ink",
-          key: "verification_status",
-          type: "single_line_text_field",
-          value: "pending",
-        },
-        {
-          ownerId: orderGid,
-          namespace: "ink",
-          key: "delivery_type",
-          type: "single_line_text_field",
-          value: "premium",
-        },
-        {
-          ownerId: orderGid,
-          namespace: "ink",
-          key: "proof_reference",
-          type: "single_line_text_field",
-          value: "",
-        },
-        {
-          ownerId: orderGid,
-          namespace: "ink",
-          key: "nfc_uid",
-          type: "single_line_text_field",
-          value: "",
-        },
-      ],
-    };
+    const metafieldResponse = await fetch(shopifyApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": accessToken,
+      },
+      body: JSON.stringify({
+        query: METAFIELD_MUTATION,
+        variables: {
+          metafields: [
+            {
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "verification_status",
+              type: "single_line_text_field",
+              value: "pending",
+            },
+            {
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "delivery_type",
+              type: "single_line_text_field",
+              value: "premium",
+            },
+            {
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "proof_reference",
+              type: "single_line_text_field",
+              value: "",
+            },
+            {
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "nfc_uid",
+              type: "single_line_text_field",
+              value: "",
+            },
+          ],
+        }
+      })
+    });
 
-    const result = await client.request(METAFIELD_MUTATION, { variables });
-    const errors = result?.data?.metafieldsSet?.userErrors;
+    const metafieldResult = await metafieldResponse.json();
+    const errors = metafieldResult?.data?.metafieldsSet?.userErrors;
     
     if (errors?.length) {
       console.error(`❌ [orders/create] Metafield errors for ${orderName}:`, errors);
