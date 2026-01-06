@@ -19,6 +19,10 @@ api_version = "2026-01"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customers,read_files,write_files,read_fulfillments,write_fulfillments,read_metaobjects,write_metaobjects,read_online_store_pages,write_online_store_pages,read_orders,write_orders,write_themes"
