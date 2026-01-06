@@ -128,8 +128,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       scope: sessionData.scope,
     };
 
-    // @ts-ignore - shopify.api.clients exists at runtime
-    const client = new shopify.api.clients.Graphql({ session });
+    // Create shopify API instance for this shop
+    const api = shopifyApi({
+      apiKey: process.env.SHOPIFY_API_KEY!,
+      apiSecretKey: process.env.SHOPIFY_API_SECRET!,
+      scopes: ["read_orders", "write_orders"],
+      apiVersion: LATEST_API_VERSION,
+      hostName: "shopifyapp.terzettoo.com",
+      isEmbeddedApp: true,
+    });
+
+    // Create GraphQL client with the session
+    const client = new api.clients.Graphql({ session });
 
     // Add tag using GraphQL Admin API
     await client.request(TAG_MUTATION, {
