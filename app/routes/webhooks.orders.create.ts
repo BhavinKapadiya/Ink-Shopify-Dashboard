@@ -38,12 +38,14 @@ mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
 function hasInkPremiumShipping(shippingLines: any[]): boolean {
   for (const line of shippingLines || []) {
     const title = (line.title || line.name || "").toLowerCase();
+    const code = (line.code || "").toLowerCase();
+    const combinedText = `${title} ${code}`.toLowerCase();
     
     // Check for "INK Premium Delivery" or similar variations
     if (
-      title.includes("ink premium") ||
-      title.includes("ink delivery") ||
-      (title.includes("premium delivery") && title.includes("ink"))
+      combinedText.includes("ink premium") ||
+      combinedText.includes("ink delivery") ||
+      (combinedText.includes("premium delivery") && combinedText.includes("ink"))
     ) {
       console.log(`✅ Found INK Premium Delivery: "${line.title}"`);
       return true;
