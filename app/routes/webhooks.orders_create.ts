@@ -115,8 +115,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // @ts-ignore - shopify.api.clients exists at runtime despite TypeScript error
   console.log(`\n📦 [orders/create] Processing order ${orderName} (${shop})`);
 
+  // DEBUG: Log full shipping data from payload
+  console.log("🚢 DEBUG: Full shipping data:");
+  console.log("  - shipping_lines:", JSON.stringify(payload?.shipping_lines, null, 2));
+  console.log("  - shipping_line:", JSON.stringify(payload?.shipping_line, null, 2));
+
   // Check shipping lines from the webhook payload
   const shippingLines = payload?.shipping_lines || [];
+  
+  // ALSO check singular shipping_line (some Shopify webhooks use this)
+  if (!shippingLines.length && payload?.shipping_line) {
+    shippingLines.push(payload.shipping_line);
+  }
+  
+  console.log(`🚢 DEBUG: Found ${shippingLines.length} shipping line(s)`);
+  
   const hasPremiumDelivery = hasInkPremiumShipping(shippingLines);
 
   if (!hasPremiumDelivery) {
