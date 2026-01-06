@@ -1,5 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import crypto from "crypto";
+import shopify from "../shopify.server";
+import db from "../db.server";
 
 // Manual webhook secret from Shopify Admin webhook settings  
 const MANUAL_WEBHOOK_SECRET = "054f24e3c411a8aa92b94aa244127309afe56a89b8f1993e996376abe8d0924b";
@@ -37,9 +39,11 @@ mutation SetInkMetafields($metafields: [MetafieldsSetInput!]!) {
  */
 function hasInkPremiumShipping(shippingLines: any[]): boolean {
   for (const line of shippingLines || []) {
-    const title = (line.title || line.name || "").toLowerCase();
+    // Check both title AND code fields (Shopify uses code for custom shipping methods)
+    const title = (line.title || "").toLowerCase();
     const code = (line.code || "").toLowerCase();
-    const combinedText = `${title} ${code}`.toLowerCase();
+    const name = (line.name || "").toLowerCase();
+    const combinedText = `${title} ${code} ${name}`.toLowerCase();
     
     // Check for "INK Premium Delivery" or similar variations
     if (
@@ -47,7 +51,7 @@ function hasInkPremiumShipping(shippingLines: any[]): boolean {
       combinedText.includes("ink delivery") ||
       (combinedText.includes("premium delivery") && combinedText.includes("ink"))
     ) {
-      console.log(`✅ Found INK Premium Delivery: "${line.title}"`);
+      console.log(`✅ Found INK Premium Delivery: title="${line.title}", code="${line.code}"`);
       return true;
     }
   }
@@ -78,9 +82,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const orderGid = payload?.admin_graphql_api_id as string | undefined;
   const orderName = payload?.name || payload?.order_number || "Unknown";
 
-  if (!orderGid) {
-    console.error("[orders/create] Missing order id");
-    return new Response("Missing order", { status: 400 });
+  if (!orderGid || !shopDomain) {
+    console.error("[orders/create] Missing order id or shop domain");
+    return new Response("Missing order or shop", { status: 400 });
   }
 
   console.log(`\n📦 [orders/create] Processing order ${orderName} (${shopDomain})`);
@@ -103,89 +107,77 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   console.log(`🛡️ [orders/create] Order ${orderName} has INK Premium Delivery!`);
 
-  // For manual webhooks, we need to create a GraphQL client with shop-specific session
-  // This is a simplified version - you may need to get the session from your database
   try {
-    // We'll use REST Admin API URL approach for tags since we don't have session
-    const shopifyApiUrl = `https://${shopDomain}/admin/api/2024-10/graphql.json`;
-    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN; // You need to set this in .env
-    
-    if (!accessToken) {
-      console.error("[orders/create] Missing SHOPIFY_ACCESS_TOKEN");
-      return new Response("Configuration error", { status: 500 });
-    }
-
-    // Add tag using GraphQL Admin API
-    const tagResponse = await fetch(shopifyApiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({
-        query: TAG_MUTATION,
-        variables: {
-          id: orderGid,
-          tags: ["INK-Premium-Delivery"]
-        }
-      })
+    // Get the session from database for this shop
+    const sessionData = await db.session.findFirst({
+      where: { shop: shopDomain },
     });
 
-    const tagResult = await tagResponse.json();
+    if (!sessionData) {
+      console.error(`[orders/create] No session found for shop: ${shopDomain}`);
+      return new Response("Shop not installed", { status: 400 });
+    }
+
+    // Create a session object for the GraphQL client
+    const session = {
+      id: sessionData.id,
+      shop: sessionData.shop,
+      state: sessionData.state,
+      isOnline: Boolean(sessionData.isOnline),
+      accessToken: sessionData.accessToken,
+      scope: sessionData.scope,
+    };
+
+    // @ts-ignore - shopify.api.clients exists at runtime
+    const client = new shopify.api.clients.Graphql({ session });
+
+    // Add tag using GraphQL Admin API
+    await client.request(TAG_MUTATION, {
+      variables: {
+        id: orderGid,
+        tags: ["INK-Premium-Delivery"]
+      }
+    });
+
     console.log(`✅ [orders/create] Tagged order ${orderName} with "INK-Premium-Delivery"`);
 
     // Set initial metafields for INK Premium orders
-    const metafieldResponse = await fetch(shopifyApiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({
-        query: METAFIELD_MUTATION,
-        variables: {
-          metafields: [
-            {
-              ownerId: orderGid,
-              namespace: "ink",
-              key: "verification_status",
-              type: "single_line_text_field",
-              value: "pending",
-            },
-            {
-              ownerId: orderGid,
-              namespace: "ink",
-              key: "delivery_type",
-              type: "single_line_text_field",
-              value: "premium",
-            },
-            {
-              ownerId: orderGid,
-              namespace: "ink",
-              key: "proof_reference",
-              type: "single_line_text_field",
-              value: "",
-            },
-            {
-              ownerId: orderGid,
-              namespace: "ink",
-              key: "nfc_uid",
-              type: "single_line_text_field",
-              value: "",
-            },
-          ],
-        }
-      })
+    await client.request(METAFIELD_MUTATION, {
+      variables: {
+        metafields: [
+          {
+            ownerId: orderGid,
+            namespace: "ink",
+            key: "verification_status",
+            type: "single_line_text_field",
+            value: "pending",
+          },
+          {
+            ownerId: orderGid,
+            namespace: "ink",
+            key: "delivery_type",
+            type: "single_line_text_field",
+            value: "premium",
+          },
+          {
+            ownerId: orderGid,
+            namespace: "ink",
+            key: "proof_reference",
+            type: "single_line_text_field",
+            value: "",
+          },
+          {
+            ownerId: orderGid,
+            namespace: "ink",
+            key: "nfc_uid",
+            type: "single_line_text_field",
+            value: "",
+          },
+        ],
+      }
     });
 
-    const metafieldResult = await metafieldResponse.json();
-    const errors = metafieldResult?.data?.metafieldsSet?.userErrors;
-    
-    if (errors?.length) {
-      console.error(`❌ [orders/create] Metafield errors for ${orderName}:`, errors);
-    } else {
-      console.log(`✅ [orders/create] Metafields initialized for ${orderName}`);
-    }
+    console.log(`✅ [orders/create] Metafields initialized for ${orderName}`);
 
   } catch (error) {
     console.error(`❌ [orders/create] Error processing ${orderName}:`, error);
