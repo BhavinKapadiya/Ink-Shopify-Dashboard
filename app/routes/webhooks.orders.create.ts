@@ -92,6 +92,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   console.log("🚢 DEBUG: Full shipping data:");
   console.log("  - shipping_lines:", JSON.stringify(payload?.shipping_lines, null, 2));
 
+  // DEBUG: Check for phone numbers
+  const shippingPhone = payload?.shipping_address?.phone;
+  const orderPhone = payload?.phone;
+  const customerPhone = payload?.customer?.phone;
+  console.log(`📱 DEBUG: Phone numbers found:`);
+  console.log(`  - Shipping Address: ${shippingPhone || "null"}`);
+  console.log(`  - Order Level: ${orderPhone || "null"}`);
+  console.log(`  - Customer Level: ${customerPhone || "null"}`);
+  const finalPhone = shippingPhone || orderPhone || customerPhone || "";
+  console.log(`✅ Selected Phone: ${finalPhone}`);
+
   // Check shipping lines from the webhook payload
   const shippingLines = payload?.shipping_lines || [];
   
@@ -181,6 +192,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               key: "nfc_uid",
               type: "single_line_text_field",
               value: "",
+            },
+            {
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "customer_phone",
+              type: "single_line_text_field",
+              value: payload.shipping_address?.phone || payload.phone || payload.customer?.phone || "",
             },
           ],
         }
