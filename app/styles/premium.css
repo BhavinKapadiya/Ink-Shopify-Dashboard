@@ -264,20 +264,20 @@ body {
 .ink-button {
   display: inline-block;
   padding: 12px 24px;
-  background: var(--ink-black);
-  color: var(--ink-white);
+  background: var(--ink-white); /* Light/White background */
+  color: var(--ink-black);      /* Black text */
   text-decoration: none;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;
-  border: none;
+  border: 1px solid var(--ink-black); /* Black border */
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: center;
 }
 
 .ink-button:hover {
-  background: #333333;
+  background: var(--ink-off-white); /* Slightly darker on hover */
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
