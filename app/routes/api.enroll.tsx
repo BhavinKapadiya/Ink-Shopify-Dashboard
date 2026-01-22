@@ -98,6 +98,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const orderQuery = `
         query getOrder($id: ID!) {
           order(id: $id) {
+            id
+            name
             customer {
               phone
             }
