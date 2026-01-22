@@ -326,8 +326,8 @@ export const loader = async ({
                     verification_updated_at: proofResponse.delivery?.timestamp || null,
                     distance_meters: null, // Not returned by /retrieve, only /verify
                     gps_verdict: proofResponse.delivery?.gps_verdict || null,
-                    enrollment_status: "enrolled",
-                    nfc_uid: null, // Not returned in retrieve response
+                    enrollment_status: proofResponse.enrollment ? "enrolled" : "pending",
+                    nfc_uid: proofResponse.nfc_uid || null,
                     shipping_gps: proofResponse.enrollment?.shipping_address_gps
                         ? JSON.stringify(proofResponse.enrollment.shipping_address_gps)
                         : null,

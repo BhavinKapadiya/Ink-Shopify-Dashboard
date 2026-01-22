@@ -44,22 +44,28 @@ interface VerifyResponse {
 }
 
 interface RetrieveResponse {
-  proof_id: string;
-  order_id: string;
-  enrollment: {
-    timestamp: string;
-    shipping_address_gps: { lat: number; lng: number };
-    photo_urls: string[];
-  };
-  delivery?: {
-    timestamp: string;
-    delivery_gps: { lat: number; lng: number };
-    gps_verdict: string;
-    phone_verified: boolean;
-  };
-  signature: string;
-  public_key: string;
-  key_id: string;
+    proof_id: string;
+    order_id: string;
+    nfc_uid?: string;
+    merchant?: string;
+    order_url?: string | null;
+    enrollment?: {
+        timestamp: string;
+        shipping_address_gps?: { lat: number; lng: number };
+        warehouse_gps?: { lat: number; lng: number };
+        photo_urls?: string[];
+        photo_hashes?: string[];
+    };
+    delivery?: {
+        timestamp: string;
+        delivery_gps?: { lat: number; lng: number };
+        device_info?: string;
+        gps_verdict?: string;
+        phone_verified?: boolean;
+    };
+    signature?: string;
+    public_key?: string;
+    key_id?: string;
 }
 
 // Export types for use in other files
