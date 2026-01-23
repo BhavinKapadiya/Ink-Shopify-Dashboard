@@ -34,7 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
     variables: {
       topic: "ORDERS_CREATE",
       webhookSubscription: {
-        callbackUrl: "https://shopifyapp.terzettoo.com/webhooks/orders/create",
+        callbackUrl: "https://shopify-app-250065525755.us-central1.run.app/webhooks/orders/create",
         format: "JSON",
       },
     },

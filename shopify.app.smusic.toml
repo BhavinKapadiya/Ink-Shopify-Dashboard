@@ -2,7 +2,7 @@
 
 client_id = "45cc130ef59cbeaf9133acea201981ed"
 name = "ink. Shipping"
-application_url = "https://shopifyapp.terzettoo.com"
+application_url = "https://shopify-app-250065525755.us-central1.run.app"
 embedded = true
 
 [webhooks]
@@ -16,6 +16,6 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://shopifyapp.terzettoo.com/auth/callback",
-  "https://shopifyapp.terzettoo.com/auth/shopify/callback"
+  "https://shopify-app-250065525755.us-central1.run.app/auth/callback",
+  "https://shopify-app-250065525755.us-central1.run.app/auth/shopify/callback"
 ]

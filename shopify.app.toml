@@ -2,7 +2,7 @@
 
 client_id = "60b3bc94dce92e75df9de4ba630cf091"
 name = "test store"
-application_url = "https://shopifyapp.terzettoo.com"
+application_url = "https://shopify-app-250065525755.us-central1.run.app"
 embedded = true
 
 [build]
@@ -31,8 +31,8 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://shopifyapp.terzettoo.com/auth/callback",
-  "https://shopifyapp.terzettoo.com/auth/shopify/callback"
+  "https://shopify-app-250065525755.us-central1.run.app/auth/callback",
+  "https://shopify-app-250065525755.us-central1.run.app/auth/shopify/callback"
 ]
 
 # Checkout UI Extension for INK disclosure
