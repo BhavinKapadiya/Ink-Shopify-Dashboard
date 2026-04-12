@@ -1,6 +1,6 @@
 import { type ActionFunctionArgs } from "react-router";
 import firestore from "../firestore.server";
-import { createMerchant, loginUser } from "../services/ink-api.server";
+import { createMerchant, loginUser, getShopIdByDomain } from "../services/ink-api.server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -75,12 +75,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // 1. INK v1.3.0 Primary Authentication Path
   // ==========================================
   try {
-    console.log(`[Auth] Attempting INK v1.3.0 login for ${email}...`);
+    console.log(`\n===========================================`);
+    console.log(`[Auth Proxy] 🚀 Intercepting Login Request`);
+    console.log(`[Auth Proxy] Email: ${email}`);
+    console.log(`[Auth Proxy] Routing to INK Backend...`);
+    
     const inkResponse = await loginUser(email, password);
     const inkUser = inkResponse.user;
-    const merchantId = inkUser.merchant_id; // This is the shop_domain from Alan
+    let merchantId = inkUser.merchant_id; // Alan might have polluted this with the domain
 
-    console.log(`[Auth] INK Login successful for ${email}, merchant: ${merchantId}`);
+    // Auto-correct if merchantId is a domain instead of shop_xxx
+    if (merchantId && !merchantId.startsWith("shop_")) {
+      console.log(`[Auth Proxy] ⚠️ Detected domain instead of shop_id (${merchantId}). Resolving...`);
+      try {
+        merchantId = await getShopIdByDomain(merchantId);
+      } catch (e: any) {
+         console.warn(`[Auth Proxy] Could not resolve shop_id for Domain: ${merchantId}`);
+      }
+    }
+
+    console.log(`[Auth Proxy] ✅ INK Login verified for: ${email}`);
+    console.log(`[Auth Proxy] 🏢 Linked Merchant Domain: ${merchantId}`);
 
     // Proactively cache/refresh the merchant's ink_api_key in Firestore.
     // This ensures the warehouse proxies can always look it up without failing.
@@ -101,13 +116,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             if (!snapshot.empty) {
               await snapshot.docs[0].ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
             } else {
-              // Create new doc with document ID = merchantId for easy future lookups
-              await firestore.collection("merchants").doc(merchantId).set({
-                shopDomain: merchantId,
+              // Create new doc with document ID = original domain OR merchantId
+              await firestore.collection("merchants").doc(inkUser.merchant_id || merchantId).set({
+                shopDomain: inkUser.merchant_id || merchantId,
+                shop_id: merchantId,
                 ink_api_key: freshApiKey,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-              });
+              }, { merge: true });
             }
           }
           console.log(`[Auth] Cached ink_api_key for merchant ${merchantId}`);
@@ -165,37 +181,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   let apiKey = merchantSnapshot.empty ? null : merchantSnapshot.docs[0].data().ink_api_key;
   let docId = merchantSnapshot.empty ? null : merchantSnapshot.docs[0].id;
+  let realShopId = merchantSnapshot.empty ? null : merchantSnapshot.docs[0].data().shop_id;
+
+  if (!realShopId) {
+    try {
+       realShopId = await getShopIdByDomain(userData.shopDomain);
+       if (realShopId) {
+          await firestore.collection("merchants").doc(userData.shopDomain).set({ shop_id: realShopId }, { merge: true });
+       }
+    } catch (e) {
+       // fallback
+    }
+  }
 
   if (!apiKey || apiKey === "sk_test_fallback") {
     console.log(`[Auth] Key missing or fallback for ${userData.shopDomain}. Calling INK Admin API...`);
     try {
       const inkRes = await createMerchant(userData.shopDomain, userData.shopDomain, `admin@${userData.shopDomain}`);
       apiKey = inkRes.api_key;
-      
-      if (docId) {
-        await firestore.collection("merchants").doc(docId).update({
-          ink_api_key: apiKey,
-          updatedAt: new Date(),
-        });
-      } else {
-        await firestore.collection("merchants").add({
-          shopDomain: userData.shopDomain,
-          ink_api_key: apiKey,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
+      realShopId = inkRes.shop_id || realShopId;
+      await firestore.collection("merchants").doc(userData.shopDomain).set({
+        shopDomain: userData.shopDomain,
+        ink_api_key: apiKey,
+        shop_id: realShopId,
+        updatedAt: new Date(),
+      }, { merge: true });
     } catch (e: any) {
       console.error("[Auth] Failed to auto-create merchant:", e.message);
       apiKey = process.env.INK_API_KEY || "sk_test_fallback";
-      if (!docId) {
-         await firestore.collection("merchants").add({
-          shopDomain: userData.shopDomain,
-          ink_api_key: apiKey,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
+      await firestore.collection("merchants").doc(userData.shopDomain).set({
+        shopDomain: userData.shopDomain,
+        ink_api_key: apiKey,
+        updatedAt: new Date(),
+      }, { merge: true });
     }
   }
 
@@ -206,6 +224,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     email: userData.email,
     name: userData.name,
     shop: userData.shopDomain,
+    merchant_id: realShopId || userData.shopDomain, // strict shop_id insertion
     role: userData.role,
     exp,
   });

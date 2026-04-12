@@ -4,6 +4,7 @@ const COLLECTION = "merchants";
 
 export interface MerchantData {
   shop: string;
+  shop_id?: string;
   payment_status?: string;
   ink_api_key?: string;
   updatedAt?: string;

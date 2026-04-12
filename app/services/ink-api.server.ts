@@ -132,18 +132,60 @@ export const deleteMerchantUser = async (userId: string) => {
 
 // V1.3.0 Auth Binding
 export const loginUser = async (email: string, password: string) => {
+    console.log(`\n🔑 [AUTH] =======================================`);
+    console.log(`🔑 [AUTH] Initiating INK v1.3.0 Login Flow`);
+    console.log(`🔑 [AUTH] URL: ${getAlanUrl('/auth/login')}`);
+    console.log(`🔑 [AUTH] Payload: { email: "${email}", password: "***" }`);
+
     const response = await fetch(getAlanUrl('/auth/login'), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
     });
 
+    console.log(`🔑 [AUTH] Response Status: ${response.status}`);
+    
     if (!response.ok) {
         const errorText = await response.text();
+        console.error(`🔑 [AUTH] ❌ Login Failed! Body: ${errorText}`);
         throw new Error(errorText || "Invalid email or password constraints");
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log(`🔑 [AUTH] ✅ Login Success. Extracted Roles: ${data.user?.role}`);
+    console.log(`🔑 [AUTH] =======================================\n`);
+    return data;
+};
+
+export const validateUserToken = async (token: string) => {
+    console.log(`\n🛡️ [AUTH VALIDATE] ================================`);
+    console.log(`🛡️ [AUTH VALIDATE] Validating JWT with INK API...`);
+    
+    const response = await fetch(getAlanUrl('/auth/validate'), {
+        method: "GET",
+        headers: { 
+            "Authorization": `Bearer ${token}` 
+        }
+    });
+
+    console.log(`🛡️ [AUTH VALIDATE] Response Status: ${response.status}`);
+
+    if (!response.ok) {
+         const errorText = await response.text();
+         console.error(`🛡️ [AUTH VALIDATE] ❌ Validation Request Failed: ${errorText}`);
+         return { valid: false };
+    }
+
+    const data = await response.json();
+    if (data.valid) {
+         console.log(`🛡️ [AUTH VALIDATE] ✅ Token is valid. User: ${data.email}, Role: ${data.role}`);
+    } else {
+         console.warn(`🛡️ [AUTH VALIDATE] ⚠️ Token rejected by backend.`);
+    }
+    console.log(`🛡️ [AUTH VALIDATE] JSON Returned:`, JSON.stringify(data));
+    console.log(`🛡️ [AUTH VALIDATE] ================================\n`);
+    
+    return data;
 };
 
 // Merchant implementation - requires Bearer ink_api_key

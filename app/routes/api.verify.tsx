@@ -71,6 +71,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             );
         }
 
+        // 0. Register tap event with Alan's tracking endpoint before fetching proof details
+        try {
+            const INK_API_BASE = process.env.INK_API_URL || "https://us-central1-inink-c76d3.cloudfunctions.net/api";
+            console.log(`[verify] Registering tap event to Alan: POST ${INK_API_BASE}/verify`);
+            await fetch(`${INK_API_BASE}/verify`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    nfc_token: token,
+                    tap_timestamp: new Date().toISOString(),
+                    tap_latitude: delivery_gps?.lat || 0,
+                    tap_longitude: delivery_gps?.lng || 0,
+                    tap_type: "delivery_confirmation"
+                })
+            });
+            console.log(`[verify] ✅ Tap event registered successfully.`);
+        } catch (postErr) {
+            console.warn(`[verify] ⚠️ Failed to explicitly post tap event to Alan:`, postErr);
+        }
+
         const alanData = await getProof(apiKey, token);
 
         if (!alanData) {

@@ -18,12 +18,25 @@ const NFCTagInventory = () => {
     if (fetcher.state === "idle" && !fetcher.data) {
       fetcher.load("/app/api/dashboard/inventory");
     }
+    
+    // Live polling every 5 seconds
+    const interval = setInterval(() => {
+      if (fetcher.state === "idle") {
+        fetcher.load("/app/api/dashboard/inventory");
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, [fetcher]);
+
+  // If data exists, we consider it "loaded" so we don't flash "..." during 5-second background polling.
+  // If data is entirely missing, we treat it as strictly loading to prevent the Critical banner from flashing immediately on render.
+  const hasData = fetcher.data !== undefined;
+  const showLoadingUI = !hasData;
 
   const remaining = fetcher.data?.remaining ?? 0;
   const total = fetcher.data?.total ?? 100;
-  const isLoading = fetcher.state === "loading";
-
+  
   const percentage = total > 0 ? Math.round((remaining / total) * 100) : 0;
   const isLowInventory = remaining < 20;
   const isCriticalInventory = remaining < 10;
@@ -48,7 +61,7 @@ const NFCTagInventory = () => {
   return (
     <>
       {/* Low/critical inventory alert — warning banner or blocking modal */}
-      <LowInventoryAlert remaining={remaining} total={total} isLoading={isLoading} />
+      <LowInventoryAlert remaining={remaining} total={total} isLoading={showLoadingUI} />
 
       <div
         className="bg-card border border-border rounded-md p-4 sm:p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
@@ -71,7 +84,7 @@ const NFCTagInventory = () => {
               />
             )}
             <span className="text-2xl sm:text-[32px] font-light text-foreground">
-              {isLoading ? "..." : `${remaining} / ${total}`}
+              {showLoadingUI ? "..." : `${remaining} / ${total}`}
             </span>
           </div>
           <p className="text-[13px]" style={{ color: "#666666" }}>

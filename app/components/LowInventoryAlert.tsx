@@ -25,7 +25,8 @@ export function LowInventoryAlert({ remaining, total, isLoading = false }: LowIn
 
   const isCritical = remaining <= CRITICAL_THRESHOLD;
 
-  if (isLoading || remaining >= LOW_THRESHOLD) return null;
+  if (isLoading) return null;
+  if (remaining >= LOW_THRESHOLD) return null;
   if (isCritical && modalDismissed) return null;
 
   const handleReorder = () => window.open(REORDER_URL, "_blank", "noopener");

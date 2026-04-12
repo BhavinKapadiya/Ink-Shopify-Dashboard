@@ -154,7 +154,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Invalid or expired token" }, { status: 401 });
   }
 
-  const { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
+  let { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
+
+  // Strict Protection: If merchantId is actually a domain (polluted from legacy token), resolve it.
+  if (merchantId && !merchantId.startsWith("shop_")) {
+     try {
+       const realShopId = await getShopIdByDomain(merchantId);
+       if (realShopId) merchantId = realShopId;
+     } catch(e) {}
+  }
   console.log("[ENROLL] shopDomain:", shopDomain, "| merchantId:", merchantId);
 
   // 2. Get merchant's INK api_key

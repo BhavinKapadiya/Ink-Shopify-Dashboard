@@ -59,7 +59,7 @@ const Dashboard = () => {
 
   return (
     <PolarisAppLayout>
-      <Page title="Dashboard">
+      <Page>
         <BlockStack gap="400">
           {/* Operational Analytics (Metabase) */}
           <Card padding="0">
@@ -68,10 +68,9 @@ const Dashboard = () => {
                 src="https://metabase-production-afb0.up.railway.app/public/dashboard/2987f9a3-e933-48d4-bb41-ad571c22c565#theme=transparent"
                 frameBorder="0"
                 width="100%"
-                height="800"
                 allowTransparency
                 title="Operational Analytics Dashboard"
-                style={{ display: "block" }}
+                className="w-full h-[800px] md:h-[650px] block"
               ></iframe>
             </div>
           </Card>

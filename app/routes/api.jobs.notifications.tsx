@@ -201,9 +201,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
 
         // If VERIFIED, check RETURN WARNING Reminders
-        if (isVerified && alanReturnExpiresAt) {
-          const days7Time = new Date(alanReturnExpiresAt.getTime() - 7 * 24 * 60 * 60 * 1000);
-          const hours48PriorTime = new Date(alanReturnExpiresAt.getTime() - 48 * 60 * 60 * 1000);
+        if (isVerified && alanDeliveredAt) {
+          // Natively calculate expiration time using Merchant's custom M7 returnWindowDays (rather than relying on Alan's generic interaction_window_closed_at)
+          const trueReturnExpiresAt = new Date(alanDeliveredAt.getTime() + returnWindowDays * 24 * 60 * 60 * 1000);
+          const days7Time = new Date(trueReturnExpiresAt.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const hours48PriorTime = new Date(trueReturnExpiresAt.getTime() - 48 * 60 * 60 * 1000);
 
           await dispatchIfReady("return7d", days7Time);
           await dispatchIfReady("return48h", hours48PriorTime);
