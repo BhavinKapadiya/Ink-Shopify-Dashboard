@@ -143,15 +143,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid or expired token" }, { status: 401 });
   }
 
-  let { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
-
-  // Strict Protection: If merchantId is actually a domain (polluted from legacy token), resolve it.
-  if (merchantId && !merchantId.startsWith("shop_")) {
-     try {
-       const realShopId = await getShopIdByDomain(merchantId);
-       if (realShopId) merchantId = realShopId;
-     } catch(e) {}
-  }
+  const { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
   console.log("[UPLOAD] shopDomain:", shopDomain, "| merchantId:", merchantId);
 
   // --- Merchant API Key ---

@@ -34,7 +34,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (inkData && inkData.api_key) {
         await updateMerchant(session.shop, {
             ink_api_key: inkData.api_key,
-            shop_id: inkData.shop_id, // Safely extract UUID format
             payment_status: "active"
         });
     } else {

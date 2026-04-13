@@ -139,11 +139,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         return json({ error: "Invalid or expired token" }, { status: 401 });
       }
       shopDomain = tokenPayload.shop || "";
-      let merchantId = tokenPayload.merchant_id || "";
-
-      if (merchantId && !merchantId.startsWith("shop_")) {
-          try { merchantId = await getShopIdByDomain(merchantId); } catch(e) {}
-      }
+      merchantId = tokenPayload.merchant_id || "";
       console.log(`[settings/media] GET auth: Bearer token decoded OK. shop=${shopDomain}, merchant_id=${merchantId}`);
   }
 
@@ -207,11 +203,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return json({ error: "Invalid or expired token" }, { status: 401 });
       }
       shopDomain = tokenPayload.shop || "";
-      let merchantId = tokenPayload.merchant_id || "";
-
-      if (merchantId && !merchantId.startsWith("shop_")) {
-          try { merchantId = await getShopIdByDomain(merchantId); } catch(e) {}
-      }
+      merchantId = tokenPayload.merchant_id || "";
       console.log(`[settings/media] ${request.method} auth: Bearer token OK. shop=${shopDomain}, merchant_id=${merchantId}`);
   }
 
