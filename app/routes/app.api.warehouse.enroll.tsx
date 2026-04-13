@@ -354,53 +354,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } catch (error: any) {
     console.error("[ENROLL] ❌ Alan enroll failed:", error.message);
 
-    // If Allan's API rejects the key (401), try to auto-heal by provisioning a fresh one.
+    // Do NOT attempt to create a new merchant on 401 — this causes key rotation
+    // which invalidates all existing enrolled proofs. If the API key is invalid,
+    // the merchant needs to re-install the app to get a fresh valid key.
     if (error.message.includes("401") || error.message.includes("Unauthorized") || error.message.includes("Invalid API key")) {
-      const identifier = shopDomain || merchantId || "";
-      console.log(`[Warehouse Enroll] INK rejected key for ${identifier}. Auto-healing with fresh key...`);
-      try {
-        const inkMerchantRes = await createMerchant(identifier, identifier, `admin@${identifier}`);
-        const freshApiKey = inkMerchantRes.api_key;
-
-        if (freshApiKey) {
-          // Update Firestore with the fresh key
-          if (merchantId) {
-            const doc = await firestore.collection("merchants").doc(merchantId).get();
-            if (doc.exists) {
-              await doc.ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
-            } else {
-              await firestore.collection("merchants").doc(merchantId).set({
-                shopDomain: identifier,
-                ink_api_key: freshApiKey,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            }
-          } else if (shopDomain) {
-            const merchantDocs = await firestore.collection("merchants").where("shopDomain", "==", shopDomain).limit(1).get();
-            if (!merchantDocs.empty) {
-              await merchantDocs.docs[0].ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
-            }
-          }
-
-          // Retry enrollment with fresh key
-          inkData = await enrollOrder(
-            freshApiKey, numericOrderId, nfc_token, String(order_number),
-            customer_email, shipping_address,
-            Array.isArray(product_details) ? product_details : [],
-            warehouse_location?.lat ? warehouse_location : undefined,
-            nfc_uid, photo_urls, photo_hashes, carrier_name, tracking_number, customer_phone
-          );
-        } else {
-          return json({ error: "Could not provision merchant API key. Contact support." }, { status: 500 });
-        }
-      } catch (healErr: any) {
-        console.error("[Warehouse Enroll] Self-heal failed:", healErr.message);
-        return json({ error: "Enrollment failed. Please log out and log in again, then retry." }, { status: 401 });
-      }
-    } else {
-      return json({ error: error.message || "Enrollment failed" }, { status: 500 });
+      console.error(`[ENROLL] ❌ Invalid API key for ${shopDomain || merchantId}. The stored ink_api_key is stale. Merchant may need to re-install the app.`);
+      return json({ error: "Authentication failed with INK backend. Please contact support or re-install the app." }, { status: 401 });
     }
+
+    return json({ error: error.message || "Enrollment failed" }, { status: 500 });
   }
 
   // 6. Update Shopify Metafields

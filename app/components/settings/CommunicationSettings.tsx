@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useFetcher } from "react-router";
 import {
   BlockStack,
   Card,
@@ -8,124 +9,86 @@ import {
   Select,
   Divider,
   Layout,
+  Banner,
 } from "@shopify/polaris";
 import { toast } from "../../hooks/use-toast";
 
-// ─── API helpers ─────────────────────────────────────────────────────────────
-const SHOPIFY_APP_URL =
-  typeof window !== "undefined"
-    ? window.location.origin
-    : "";
-
-function getToken() {
-  return typeof window !== "undefined" ? localStorage.getItem("token") : null;
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface NotificationSettings {
+  channels: { email: boolean; sms: boolean };
+  delivery: { outForDelivery: boolean; delivered: boolean; deliveryConfirmed: boolean };
+  reminders: { hours4: boolean; hours24: boolean; hours48: boolean };
+  returnReminders: { days7: boolean; hours48: boolean };
+  returnWindow: string;
 }
 
-async function fetchNotificationSettings() {
-  try {
-    const token = getToken();
-    if (!token) return { error: { message: "Not authenticated" } };
-    const res = await fetch(`${SHOPIFY_APP_URL}/app/api/settings/notifications`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return { error: { message: "Failed to load" } };
-    return { data: await res.json() };
-  } catch (e: any) {
-    return { error: { message: e.message } };
-  }
-}
+const DEFAULT_SETTINGS: NotificationSettings = {
+  channels: { email: true, sms: false },
+  delivery: { outForDelivery: true, delivered: true, deliveryConfirmed: false },
+  reminders: { hours4: true, hours24: true, hours48: false },
+  returnReminders: { days7: true, hours48: false },
+  returnWindow: "30",
+};
 
-async function updateNotificationSettings(payload: any) {
-  try {
-    const token = getToken();
-    if (!token) return { error: { message: "Not authenticated" } };
-    const res = await fetch(`${SHOPIFY_APP_URL}/app/api/settings/notifications`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return { error: { message: "Failed to save" } };
-    return { data: await res.json() };
-  } catch (e: any) {
-    return { error: { message: e.message } };
-  }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── Component ────────────────────────────────────────────────────────────────
 const CommunicationSettings = () => {
-  const [channels, setChannels] = useState({ email: true, sms: false });
-  const [delivery, setDelivery] = useState({
-    outForDelivery: true,
-    delivered: true,
-    deliveryConfirmed: false,
-  });
-  const [reminders, setReminders] = useState({
-    hours4: true,
-    hours24: true,
-    hours48: false,
-  });
-  const [returnReminders, setReturnReminders] = useState({
-    days7: true,
-    hours48: false,
-  });
-  const [returnWindow, setReturnWindow] = useState("30");
+  const loadFetcher = useFetcher<{ settings?: NotificationSettings; error?: string }>();
+  const saveFetcher = useFetcher<{ success?: boolean; error?: string }>();
 
-  // ── Load settings from Firestore on mount ────────────────────────────────
+  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ── Load settings from Firestore on mount via Remix loader ─────────────────
   useEffect(() => {
-    let mounted = true;
-    fetchNotificationSettings().then(({ data, error }) => {
-      if (!mounted) return;
-      if (error) {
-        // Silently fall back to defaults — don't interrupt the page load
-        console.warn("[CommunicationSettings] Could not load settings:", error.message);
-      } else if (data?.settings) {
-        setChannels(data.settings.channels ?? { email: true, sms: false });
-        setDelivery(data.settings.delivery ?? { outForDelivery: true, delivered: true, deliveryConfirmed: false });
-        setReminders(data.settings.reminders ?? { hours4: true, hours24: true, hours48: false });
-        setReturnReminders(data.settings.returnReminders ?? { days7: true, hours48: false });
-        setReturnWindow(data.settings.returnWindow ?? "30");
-      }
-    });
-    return () => { mounted = false; };
+    loadFetcher.load("/app/api/settings/notifications");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Save full settings payload to backend ────────────────────────────────
-  const saveSettings = async (overrides: object) => {
-    const newSettings = {
-      channels,
-      delivery,
-      reminders,
-      returnReminders,
-      returnWindow,
-      ...overrides,
-    };
-    const { error } = await updateNotificationSettings(newSettings);
-    if (error) {
-      toast({ description: "Failed to save settings", variant: "destructive", duration: 2000 });
+  // ── Update local state when loader data arrives ────────────────────────────
+  useEffect(() => {
+    if (loadFetcher.data?.settings) {
+      setSettings(loadFetcher.data.settings);
     }
-  };
+  }, [loadFetcher.data]);
 
-  const toggle = <T extends Record<string, boolean>>(
-    setter: React.Dispatch<React.SetStateAction<T>>,
-    stateProp: "channels" | "delivery" | "reminders" | "returnReminders",
-    key: keyof T,
-    label: string
-  ) => {
-    setter((prev) => {
-      const newVal = !prev[key];
-      const updatedState = { ...prev, [key]: newVal };
-      toast({
-        description: `${label} ${newVal ? "enabled" : "disabled"}`,
-        duration: 1500,
-      });
-      saveSettings({ [stateProp]: updatedState });
-      return updatedState;
+  // ── Show error feedback when save completes ────────────────────────────────
+  useEffect(() => {
+    if (saveFetcher.state === "idle" && saveFetcher.data) {
+      if (saveFetcher.data.error) {
+        setSaveError(saveFetcher.data.error);
+        toast({ description: "Failed to save settings", variant: "destructive", duration: 3000 });
+      } else if (saveFetcher.data.success) {
+        setSaveError(null);
+      }
+    }
+  }, [saveFetcher.state, saveFetcher.data]);
+
+  // ── Save via Remix action — goes through Shopify session auth properly ─────
+  const saveSettings = (newSettings: NotificationSettings) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    saveFetcher.submit(newSettings as any, {
+      method: "POST",
+      action: "/app/api/settings/notifications",
+      encType: "application/json",
     });
   };
 
+  // ── Generic toggle ─────────────────────────────────────────────────────────
+  const toggle = (
+    section: "channels" | "delivery" | "reminders" | "returnReminders",
+    key: string,
+    label: string
+  ) => {
+    const currentSection = settings[section] as Record<string, boolean>;
+    const newVal = !currentSection[key];
+    const updatedSection = { ...currentSection, [key]: newVal };
+    const newSettings = { ...settings, [section]: updatedSection } as NotificationSettings;
+    setSettings(newSettings);
+    toast({ description: `${label} ${newVal ? "enabled" : "disabled"}`, duration: 1500 });
+    saveSettings(newSettings);
+  };
+
+  // ── Toggle row sub-component ───────────────────────────────────────────────
   const ToggleRow = ({
     checked,
     onToggle,
@@ -146,8 +109,20 @@ const CommunicationSettings = () => {
     </InlineStack>
   );
 
+  const isSaving = saveFetcher.state !== "idle";
+
   return (
     <Layout>
+      {/* Save error banner */}
+      {saveError && (
+        <Layout.Section>
+          <Banner tone="critical" onDismiss={() => setSaveError(null)}>
+            <p>Could not save settings: {saveError}. Please try again.</p>
+          </Banner>
+        </Layout.Section>
+      )}
+
+      {/* ── Notification Channels ── */}
       <Layout.AnnotatedSection
         title="Notification Channel"
         description="How customers receive notifications about their deliveries."
@@ -155,15 +130,15 @@ const CommunicationSettings = () => {
         <Card>
           <BlockStack gap="400">
             <ToggleRow
-              checked={channels.email}
-              onToggle={() => toggle(setChannels, "channels", "email", "Email notifications")}
+              checked={settings.channels.email}
+              onToggle={() => toggle("channels", "email", "Email notifications")}
               title="Email"
               description="Send notifications via email."
             />
             <Divider />
             <ToggleRow
-              checked={channels.sms}
-              onToggle={() => toggle(setChannels, "channels", "sms", "SMS notifications")}
+              checked={settings.channels.sms}
+              onToggle={() => toggle("channels", "sms", "SMS notifications")}
               title="SMS"
               description="Send notifications via text message."
             />
@@ -174,6 +149,7 @@ const CommunicationSettings = () => {
         </Card>
       </Layout.AnnotatedSection>
 
+      {/* ── Delivery Notifications ── */}
       <Layout.AnnotatedSection
         title="Delivery Notifications"
         description="Messages sent to customers during the delivery process."
@@ -181,28 +157,22 @@ const CommunicationSettings = () => {
         <Card>
           <BlockStack gap="400">
             <ToggleRow
-              checked={delivery.outForDelivery}
-              onToggle={() =>
-                toggle(setDelivery, "delivery", "outForDelivery", "Out for delivery")
-              }
+              checked={settings.delivery.outForDelivery}
+              onToggle={() => toggle("delivery", "outForDelivery", "Out for delivery")}
               title="Out for delivery"
               description="Notify when carrier scan shows package is out for delivery."
             />
             <Divider />
             <ToggleRow
-              checked={delivery.delivered}
-              onToggle={() =>
-                toggle(setDelivery, "delivery", "delivered", "Delivered notification")
-              }
+              checked={settings.delivery.delivered}
+              onToggle={() => toggle("delivery", "delivered", "Delivered notification")}
               title="Delivered"
               description="Notify when carrier confirms delivery. Includes tap instructions."
             />
             <Divider />
             <ToggleRow
-              checked={delivery.deliveryConfirmed}
-              onToggle={() =>
-                toggle(setDelivery, "delivery", "deliveryConfirmed", "Delivery confirmed")
-              }
+              checked={settings.delivery.deliveryConfirmed}
+              onToggle={() => toggle("delivery", "deliveryConfirmed", "Delivery confirmed")}
               title="Delivery confirmed"
               description="Confirmation sent after customer taps."
             />
@@ -210,6 +180,7 @@ const CommunicationSettings = () => {
         </Card>
       </Layout.AnnotatedSection>
 
+      {/* ── Tap Reminders ── */}
       <Layout.AnnotatedSection
         title="Tap Reminders"
         description="Sent if the customer hasn't tapped. Reminders stop once the customer taps."
@@ -217,26 +188,22 @@ const CommunicationSettings = () => {
         <Card>
           <BlockStack gap="400">
             <ToggleRow
-              checked={reminders.hours4}
-              onToggle={() => toggle(setReminders, "reminders", "hours4", "4-hour reminder")}
+              checked={settings.reminders.hours4}
+              onToggle={() => toggle("reminders", "hours4", "4-hour reminder")}
               title="4 hours after delivery"
               description="First reminder."
             />
             <Divider />
             <ToggleRow
-              checked={reminders.hours24}
-              onToggle={() =>
-                toggle(setReminders, "reminders", "hours24", "24-hour reminder")
-              }
+              checked={settings.reminders.hours24}
+              onToggle={() => toggle("reminders", "hours24", "24-hour reminder")}
               title="24 hours after delivery"
               description="Second reminder."
             />
             <Divider />
             <ToggleRow
-              checked={reminders.hours48}
-              onToggle={() =>
-                toggle(setReminders, "reminders", "hours48", "48-hour reminder")
-              }
+              checked={settings.reminders.hours48}
+              onToggle={() => toggle("reminders", "hours48", "48-hour reminder")}
               title="48 hours after delivery"
               description="Final tap reminder."
             />
@@ -244,6 +211,7 @@ const CommunicationSettings = () => {
         </Card>
       </Layout.AnnotatedSection>
 
+      {/* ── Return Window Reminders ── */}
       <Layout.AnnotatedSection
         title="Return Window Reminders"
         description="Sent to verified customers as their return window approaches closing."
@@ -251,19 +219,15 @@ const CommunicationSettings = () => {
         <Card>
           <BlockStack gap="400">
             <ToggleRow
-              checked={returnReminders.days7}
-              onToggle={() =>
-                toggle(setReturnReminders, "returnReminders", "days7", "7-day return reminder")
-              }
+              checked={settings.returnReminders.days7}
+              onToggle={() => toggle("returnReminders", "days7", "7-day return reminder")}
               title="7 days before return window closes"
               description="Early reminder. Includes return link."
             />
             <Divider />
             <ToggleRow
-              checked={returnReminders.hours48}
-              onToggle={() =>
-                toggle(setReturnReminders, "returnReminders", "hours48", "48-hour return reminder")
-              }
+              checked={settings.returnReminders.hours48}
+              onToggle={() => toggle("returnReminders", "hours48", "48-hour return reminder")}
               title="48 hours before return window closes"
               description='"Your return window closes in 2 days."'
             />
@@ -271,6 +235,7 @@ const CommunicationSettings = () => {
         </Card>
       </Layout.AnnotatedSection>
 
+      {/* ── Return Window (M7) ── */}
       <Layout.AnnotatedSection
         title="Return Window"
         description="How long customers have to initiate a return after delivery."
@@ -279,14 +244,13 @@ const CommunicationSettings = () => {
           <Select
             label=""
             labelHidden
-            value={returnWindow}
+            disabled={isSaving}
+            value={settings.returnWindow}
             onChange={(v) => {
-              setReturnWindow(v);
-              toast({
-                description: `Return window set to ${v} days`,
-                duration: 1500,
-              });
-              saveSettings({ returnWindow: v });
+              const newSettings = { ...settings, returnWindow: v };
+              setSettings(newSettings);
+              toast({ description: `Return window set to ${v} days`, duration: 1500 });
+              saveSettings(newSettings);
             }}
             options={[
               { label: "14 days", value: "14" },

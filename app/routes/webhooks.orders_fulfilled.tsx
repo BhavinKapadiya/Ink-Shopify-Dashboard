@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import { NFSService } from "../services/nfs.server";
+import { createMerchant } from "../services/ink-api.server";
 import firestore from "../firestore.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -10,23 +11,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // Payload for orders/fulfilled webhook is an Order object.
   const orderId = payload.id;
-  
   if (!orderId) {
     console.error(`[${topic}] No order payload found.`);
     return new Response("Bad Request", { status: 400 });
   }
 
   const orderGid = `gid://shopify/Order/${orderId}`;
-  
   console.log(`[${topic}] Webhook triggered for shop: ${shop}, orderGid: ${orderGid}`);
 
-  // Fetch the proof_reference metafield to see if this order was enrolled in INK
   try {
-    // 1. Look up the merchant's ink_api_key from Firestore using the shop domain.
-    //    The API spec requires Bearer <api_key> for PATCH /api/proofs/:proof_id/delivered.
+    // ── Step 1: Look up merchant's ink_api_key from Firestore ─────────────────
     let merchantApiKey: string | null = null;
+    let merchantDocRef: FirebaseFirestore.DocumentReference | null = null;
+
     const merchantSnap = await firestore
       .collection("merchants")
       .where("shopDomain", "==", shop)
@@ -34,6 +32,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .get();
 
     if (!merchantSnap.empty) {
+      merchantDocRef = merchantSnap.docs[0].ref;
       merchantApiKey = merchantSnap.docs[0].data()?.ink_api_key || null;
     }
 
@@ -43,8 +42,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
     console.log(`[${topic}] Found ink_api_key for ${shop} (prefix: ${merchantApiKey.slice(0, 12)}...)`);
 
-    // 2. Fetch the proof_reference metafield from Shopify via GraphQL
-    const response = await admin.graphql(`
+    // ── Step 2: Fetch proof_reference metafield from Shopify ──────────────────
+    const gqlResponse = await admin.graphql(`
       query GetOrderMetafield($id: ID!) {
         order(id: $id) {
           name
@@ -55,34 +54,63 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
     `, {
-      variables: {
-        id: orderGid
-      }
+      variables: { id: orderGid }
     });
 
-    const body = await response.json();
+    const body = await gqlResponse.json();
     const proofReference = body.data?.order?.metafield?.value;
     const fulfilledAt = payload.updated_at || body.data?.order?.updatedAt || new Date().toISOString();
-    
-    // Find carrier info from Shopify fulfillment if available
+
+    // Carrier from Shopify fulfillment
     let carrier: string | undefined;
     if (payload.fulfillments && payload.fulfillments.length > 0) {
       carrier = payload.fulfillments[0].tracking_company || undefined;
     }
 
-    if (proofReference) {
-      console.log(`[${topic}] Found proof_reference: ${proofReference} for order ${orderGid}. Marking as delivered.`);
-      
-      // 3. Call Alan's API with the merchant's Bearer token (not the admin secret)
-      await NFSService.markDelivered(proofReference, merchantApiKey, {
-        delivered_at: fulfilledAt,
-        carrier,
-      });
-
-      console.log(`[${topic}] ✅ Successfully pushed delivery state to Alan's backend for proof: ${proofReference}`);
-    } else {
+    if (!proofReference) {
       console.log(`[${topic}] Order ${orderGid} has no INK proof_reference metafield. Skipping (not an INK order).`);
+      return new Response("OK", { status: 200 });
     }
+
+    console.log(`[${topic}] Found proof_reference: ${proofReference} for order ${orderGid}. Marking as delivered.`);
+    console.log(`📦 Marking delivery for proof ${proofReference}:`, { delivered_at: fulfilledAt, carrier });
+
+    // ── Step 3: Call PATCH /api/proofs/:proof_id/delivered ────────────────────
+    // If stored key is stale (401), provision a fresh key and retry ONCE.
+    const markDeliveredWithRetry = async (apiKey: string): Promise<void> => {
+      try {
+        await NFSService.markDelivered(proofReference, apiKey, {
+          delivered_at: fulfilledAt,
+          carrier,
+        });
+        console.log(`[${topic}] ✅ Successfully pushed delivered state for proof: ${proofReference}`);
+      } catch (markErr: any) {
+        const isAuthError =
+          markErr.message?.includes("401") ||
+          markErr.message?.includes("Invalid API key");
+
+        if (isAuthError && merchantDocRef) {
+          console.warn(`[${topic}] ⚠️ API key rejected (401). Re-provisioning key for ${shop} and retrying...`);
+          const freshMerchant = await createMerchant(shop, shop, `admin@${shop}`);
+          const freshApiKey = freshMerchant?.api_key;
+          if (!freshApiKey) {
+            throw new Error(`Alan did not return a new api_key for ${shop}. Proof ${proofReference} cannot be marked delivered.`);
+          }
+          await merchantDocRef.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
+          console.log(`[${topic}] ✅ Fresh key provisioned. Retrying markDelivered...`);
+          // Retry with fresh key — no further fallback
+          await NFSService.markDelivered(proofReference, freshApiKey, {
+            delivered_at: fulfilledAt,
+            carrier,
+          });
+          console.log(`[${topic}] ✅ markDelivered succeeded after key refresh for proof: ${proofReference}`);
+        } else {
+          throw markErr;
+        }
+      }
+    };
+
+    await markDeliveredWithRetry(merchantApiKey);
 
   } catch (error) {
     console.error(`[${topic}] Error processing fulfilled webhook:`, error);

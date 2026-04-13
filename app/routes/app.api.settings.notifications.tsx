@@ -74,22 +74,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return json({ error: "Unauthorized" }, { status: 401 });
-  }
+  let shopDomain: string | undefined;
+  let merchantId: string | undefined;
 
-  const tokenPayload = decodeToken(authHeader.slice(7));
-  if (!tokenPayload) {
-    return json({ error: "Invalid or expired token" }, { status: 401 });
+  // 1. Try Shopify Admin session first (embedded app)
+  try {
+    const { authenticate } = await import("../shopify.server");
+    const { session } = await authenticate.admin(request);
+    shopDomain = session.shop;
+  } catch {
+    // 2. Fallback to warehouse JWT
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const tokenPayload = decodeToken(authHeader.slice(7));
+    if (!tokenPayload) {
+      return json({ error: "Invalid or expired token" }, { status: 401 });
+    }
+    shopDomain = tokenPayload.shop;
+    merchantId = tokenPayload.merchant_id;
   }
 
   try {
-    const docRef = await getMerchantDocRef(tokenPayload.shop, tokenPayload.merchant_id);
+    const docRef = await getMerchantDocRef(shopDomain, merchantId);
     if (!docRef) return json({ error: "Merchant not found" }, { status: 404 });
 
     const data = (await docRef.get()).data() ?? {};
-    
     return json({
       settings: data.notification_settings ?? defaultSettings,
     });
@@ -108,21 +119,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return json({ error: "Unauthorized" }, { status: 401 });
-  }
+  let shopDomain: string | undefined;
+  let merchantId: string | undefined;
 
-  const tokenPayload = decodeToken(authHeader.slice(7));
-  if (!tokenPayload) {
-    return json({ error: "Invalid or expired token" }, { status: 401 });
+  // 1. Try Shopify Admin session first (embedded app)
+  try {
+    const { authenticate } = await import("../shopify.server");
+    const { session } = await authenticate.admin(request);
+    shopDomain = session.shop;
+  } catch {
+    // 2. Fallback to warehouse JWT
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const tokenPayload = decodeToken(authHeader.slice(7));
+    if (!tokenPayload) {
+      return json({ error: "Invalid or expired token" }, { status: 401 });
+    }
+    shopDomain = tokenPayload.shop;
+    merchantId = tokenPayload.merchant_id;
   }
 
   try {
     const payload = await request.json();
-    const docRef = await getMerchantDocRef(tokenPayload.shop, tokenPayload.merchant_id);
+    const docRef = await getMerchantDocRef(shopDomain, merchantId);
     
     if (!docRef) {
+      console.error(`[settings/notifications] Merchant not found for shop=${shopDomain}, merchantId=${merchantId}`);
       return json({ error: "Merchant not found" }, { status: 404 });
     }
 
@@ -130,6 +154,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       notification_settings: payload,
     });
 
+    console.log(`[settings/notifications] ✅ Settings saved for ${shopDomain || merchantId}`);
     return json({ success: true, settings: payload });
   } catch (err: any) {
     console.error("[settings/notifications] POST error:", err.message);

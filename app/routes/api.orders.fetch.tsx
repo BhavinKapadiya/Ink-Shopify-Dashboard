@@ -298,6 +298,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return {
         id: numericId,
         name: order.name,
+        // Derive sequential order number from name ("#1019" → 1019)
+        orderNumber: order.name ? parseInt(order.name.replace(/^#/, ""), 10) || undefined : undefined,
         createdAt: order.createdAt,
         items,
         itemCount: items.reduce((sum: number, item: any) => sum + item.quantity, 0),
