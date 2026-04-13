@@ -158,10 +158,22 @@ export async function action({ request }: ActionFunctionArgs) {
     let inkUserId = "";
 
     try {
-      // Create User in INK Backend via Admin Proxy
-      const data = await adminCreateUser(shopDomain, name, email, password);
+      // ── Resolve Alan's real shop_id (format: shop_<16hex>) ──────────────────
+      // We must pass Alan's internal shop_id as merchant_id, NOT the Shopify domain.
+      // Passing the domain was the bug causing merchant_id = "taimoor1-2.myshopify.com".
+      let alanShopId: string;
+      try {
+        alanShopId = await getShopIdByDomain(shopDomain);
+        console.log(`[UserManagement] Resolved Alan shop_id for ${shopDomain}: ${alanShopId}`);
+      } catch (resolveErr: any) {
+        console.error("[UserManagement] Could not resolve Alan shop_id:", resolveErr.message);
+        return json({ error: "Could not resolve merchant ID. Please contact support." }, { status: 500 });
+      }
+
+      // Create User in INK Backend via Admin Proxy using the real shop_id
+      const data = await adminCreateUser(alanShopId, name, email, password);
       inkUserId = data.user_id;
-      console.log(`[UserManagement] Successfully created user in INK Backend: ${inkUserId}`);
+      console.log(`[UserManagement] Successfully created user in INK Backend: ${inkUserId} (merchant: ${alanShopId})`);
     } catch (inkError: any) {
       console.error("[UserManagement] Failed to create user in INK:", inkError);
       return json({ error: inkError.message || "Failed to create user in INK System" }, { status: 400 });
