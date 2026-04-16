@@ -206,13 +206,21 @@ export const enrollOrder = async (
     customerPhone?: string | null
 ) => {
     const payload: any = { 
-        order_id: orderId, // We assume orderId is already the numeric ID string
+        order_id: orderId,
         nfc_token: nfcToken,
         order_number: orderNumber,
         customer_email: customerEmail || "unknown@email.com",
         customer_phone: customerPhone || "",
         shipping_address: shippingAddress,
-        product_details: productDetails
+        product_details: productDetails,
+        order_details: {
+            order_id: orderId,
+            order_number: orderNumber,
+            customer_email: customerEmail || "unknown@email.com",
+            customer_phone: customerPhone || "",
+            shipping_address: shippingAddress,
+            product_details: productDetails
+        }
     };
     
     if (warehouseLocation) payload.warehouse_location = warehouseLocation;

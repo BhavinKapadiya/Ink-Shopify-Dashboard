@@ -87,35 +87,48 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.log(`[Auth Proxy] ✅ INK Login verified for: ${email}`);
     console.log(`[Auth Proxy] 🏢 Linked Merchant Domain: ${merchantId}`);
 
-    // Proactively cache/refresh the merchant's ink_api_key in Firestore.
-    // This ensures the warehouse proxies can always look it up without failing.
     if (merchantId) {
       try {
-        // Try to get or create the merchant on Alan's side (handles both new + reinstall)
-        const inkMerchantRes = await createMerchant(merchantId, merchantId, email);
-        const freshApiKey = inkMerchantRes.api_key;
-
-        if (freshApiKey) {
-          // Upsert into Firestore: first try by document ID, then by shopDomain field
-          const existingDoc = await firestore.collection("merchants").doc(merchantId).get();
-          if (existingDoc.exists) {
-            await existingDoc.ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
-          } else {
-            // Also check by shopDomain field  
-            const snapshot = await firestore.collection("merchants").where("shopDomain", "==", merchantId).limit(1).get();
-            if (!snapshot.empty) {
-              await snapshot.docs[0].ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
-            } else {
-              // Create new doc with document ID = merchantId for easy future lookups
-              await firestore.collection("merchants").doc(merchantId).set({
-                shopDomain: merchantId,
-                ink_api_key: freshApiKey,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            }
+        // First check if we already have a valid API key in Firestore.
+        // DO NOT call createMerchant if we already have one! It regenerates the key and orphans all existing proofs!
+        let existingKey = null;
+        const existingDoc = await firestore.collection("merchants").doc(merchantId).get();
+        if (existingDoc.exists) {
+          existingKey = existingDoc.data()?.ink_api_key;
+        } else {
+          const snapshot = await firestore.collection("merchants").where("shopDomain", "==", merchantId).limit(1).get();
+          if (!snapshot.empty) {
+            existingKey = snapshot.docs[0].data()?.ink_api_key;
           }
-          console.log(`[Auth] Cached ink_api_key for merchant ${merchantId}`);
+        }
+        
+        if (!existingKey || existingKey === "sk_test_fallback") {
+          console.log(`[Auth Proxy] Key missing for ${merchantId}. Provisioning NEW key from INK Admin API...`);
+          // Try to get or create the merchant on Alan's side (handles both new + reinstall)
+          const inkMerchantRes = await createMerchant(merchantId, merchantId, email);
+          const freshApiKey = inkMerchantRes.api_key;
+
+          if (freshApiKey) {
+            // Upsert into Firestore: first try by document ID, then by shopDomain field
+            if (existingDoc.exists) {
+              await existingDoc.ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
+            } else {
+              // Also check by shopDomain field  
+              const snapshot = await firestore.collection("merchants").where("shopDomain", "==", merchantId).limit(1).get();
+              if (!snapshot.empty) {
+                await snapshot.docs[0].ref.update({ ink_api_key: freshApiKey, updatedAt: new Date() });
+              } else {
+                // Create new doc with document ID = merchantId for easy future lookups
+                await firestore.collection("merchants").doc(merchantId).set({
+                  shopDomain: merchantId,
+                  ink_api_key: freshApiKey,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+            }
+            console.log(`[Auth] Cached ink_api_key for merchant ${merchantId}`);
+          }
         }
       } catch (cacheErr: any) {
         // Non-fatal: if caching fails, the proxy self-heal will handle it
