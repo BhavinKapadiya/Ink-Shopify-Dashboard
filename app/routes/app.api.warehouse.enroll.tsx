@@ -156,6 +156,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   let { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
   
+  // Alan's JWT does not have a "shop" property, only "merchant_id".
+  shopDomain = shopDomain || merchantId;
+
   if (shopDomain && shopDomain.startsWith("shop_")) {
     try {
       const { getDomainByShopId } = await import("../services/ink-api.server");

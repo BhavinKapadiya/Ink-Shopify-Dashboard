@@ -79,6 +79,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return json({ error: "Invalid token or missing shop domain" }, { status: 401 });
     }
 
+    if (shopDomain && shopDomain.startsWith("shop_")) {
+      try {
+        const { getDomainByShopId } = await import("../services/ink-api.server");
+        const resolvedDomain = await getDomainByShopId(shopDomain);
+        if (resolvedDomain) {
+            shopDomain = resolvedDomain;
+        }
+      } catch (e: any) {
+        console.warn(`[INVENTORY] Could not resolve Shopify domain for ${shopDomain}: ${e.message}`);
+      }
+    }
+
     // 3. Fetch inventory directly from Firestore (no API key needed)
     const inventoryData = await getInventoryByShopDomain(shopDomain);
 
