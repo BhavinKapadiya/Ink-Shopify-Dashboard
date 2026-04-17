@@ -93,6 +93,17 @@ export const getShopIdByDomain = async (shopDomain: string): Promise<string> => 
     return merchant.shop_id;
 };
 
+export const getDomainByShopId = async (shopId: string): Promise<string> => {
+    const listRes = await fetch(getAlanUrl("/admin/merchants?limit=200"), {
+        headers: { "X-Admin-Secret": INK_ADMIN_SECRET },
+    });
+    if (!listRes.ok) throw new Error("Failed to list merchants");
+    const { merchants } = await listRes.json();
+    const merchant = merchants?.find((m: any) => m.shop_id === shopId);
+    if (!merchant || !merchant.shop_domain) throw new Error(`Shopify domain not found for shop_id: ${shopId}`);
+    return merchant.shop_domain;
+};
+
 export const adminCreateUser = async (merchantId: string, name: string, email: string, password?: string) => {
     const payload: any = { merchant_id: merchantId, name, email };
     if (password) payload.password = password;

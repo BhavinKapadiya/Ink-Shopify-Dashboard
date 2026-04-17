@@ -154,7 +154,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Invalid or expired token" }, { status: 401 });
   }
 
-  const { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
+  let { shop: shopDomain, merchant_id: merchantId } = tokenPayload;
+  
+  if (shopDomain && shopDomain.startsWith("shop_")) {
+    try {
+      const { getDomainByShopId } = await import("../services/ink-api.server");
+      const resolvedDomain = await getDomainByShopId(shopDomain);
+      if (resolvedDomain) {
+          console.log(`[ENROLL] Resolved generic shop_id ${shopDomain} to Shopify domain: ${resolvedDomain}`);
+          shopDomain = resolvedDomain;
+          merchantId = resolvedDomain; // Reassign merchantId to match the Shopify domain
+      }
+    } catch (e: any) {
+      console.warn(`[ENROLL] Could not resolve Shopify domain for ${shopDomain}: ${e.message}`);
+    }
+  }
+
   console.log("[ENROLL] shopDomain:", shopDomain, "| merchantId:", merchantId);
 
   // 2. Get merchant's INK api_key

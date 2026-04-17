@@ -61,6 +61,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       });
     }
 
+    if (shopDomain.startsWith("shop_")) {
+      try {
+        const { getDomainByShopId } = await import("../services/ink-api.server");
+        const resolvedDomain = await getDomainByShopId(shopDomain);
+        if (resolvedDomain) {
+            console.log(`🔍 [orders/fetch] Resolved generic shop_id ${shopDomain} to Shopify domain: ${resolvedDomain}`);
+            shopDomain = resolvedDomain;
+        }
+      } catch (e: any) {
+        console.warn(`🔍 [orders/fetch] Could not resolve Shopify domain for ${shopDomain}: ${e.message}`);
+      }
+    }
+
     // 2. Get offline session for this specific store
     console.log("🔍 [orders/fetch] Step 4: Fetching offline session for:", shopDomain);
     const session = await getOfflineSession(shopDomain);
