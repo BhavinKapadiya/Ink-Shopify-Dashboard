@@ -18,9 +18,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const fulfillment = payload as any;
-    const shipmentStatus = fulfillment.shipment_status;
+    let shipmentStatus = fulfillment.shipment_status;
     const orderId = fulfillment.order_id;
     const orderGid = `gid://shopify/Order/${orderId}`;
+
+    // DEV HACK: Force delivered if tracking number is literally exactly '1'
+    if (fulfillment.tracking_number === "1" || fulfillment.tracking_numbers?.includes("1") || fulfillment.tracking_company === "Other") {
+      if (fulfillment.tracking_number === "1" || fulfillment.tracking_numbers?.includes("1")) {
+         console.log(`🧑‍💻 DEV HACK: Tracking number '1' detected! Force-spoofing shipment state to 'delivered'.`);
+         shipmentStatus = "delivered";
+      }
+    }
 
     console.log(`📦 Store: ${shop}`);
     console.log(`📦 Order ID: ${orderId}`);
@@ -38,13 +46,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       query GetOrderForFulfillmentEvent($id: ID!) {
         order(id: $id) {
           name
-          tags
+          email
+          phone
+          shippingAddress {
+            phone
+          }
           customer {
             email
             phone
             firstName
           }
           proofMetafield: metafield(namespace: "ink", key: "proof_reference") { value }
+          ledgerMetafield: metafield(namespace: "ink", key: "notification_ledger") { value }
         }
       }
     `;
@@ -60,10 +73,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Is it an INK order?
-    if (!order.tags.includes("INK")) {
-      console.log(`ℹ️ Order ${order.name} is not tagged with INK. Skipping.`);
+    if (!order.proofMetafield || !order.proofMetafield.value) {
+      console.log(`ℹ️ Order ${order.name} is not Enrolled with a Proof Reference. Skipping.`);
       return new Response("OK", { status: 200 });
     }
+
+    const ledgerValue = order.ledgerMetafield?.value;
+    const ledger = ledgerValue ? JSON.parse(ledgerValue) : {};
 
     // 2. Fetch Merchant Notification Settings from Firestore
     console.log(`📦 Fetching Merchant Settings for ${shop}...`);
@@ -88,10 +104,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (shipmentStatus === "delivered") notificationType = "delivered";
 
     if (notificationType) {
-      const customerEmail = order.customer?.email;
-      const customerPhone = order.customer?.phone;
+      if (ledger[notificationType]) {
+        console.log(`ℹ️ [${notificationType}] was already sent to ${order.name}. Skipping duplicate.`);
+        return new Response("OK", { status: 200 });
+      }
+
+      // Natively stamp delivered_at to Shopify if delivered
+      if (notificationType === "delivered") {
+        const deliveredMutation = `#graphql
+          mutation UpdateDeliveredTime($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) { userErrors { message } }
+          }
+        `;
+        await admin.graphql(deliveredMutation, {
+          variables: {
+            metafields: [{
+              ownerId: orderGid,
+              namespace: "ink",
+              key: "delivered_at",
+              type: "date_time",
+              value: new Date().toISOString()
+            }]
+          }
+        });
+        console.log(`✅ Stamped ink.delivered_at natively to Shopify for Cron Job math.`);
+      }
+
+      const customerEmail = order.email || order.customer?.email;
+      const customerPhone = order.shippingAddress?.phone || order.phone || order.customer?.phone;
       const customerName = order.customer?.firstName || "Customer";
-      const verifyUrl = order.proofMetafield?.value ? `https://shop.in.ink/t/${order.proofMetafield.value}` : undefined;
+      const verifyUrl = undefined;
 
       console.log(`\n📨 Dispatching immediate [${notificationType}] notification via NotificationService...`);
       console.log(`   - To: ${customerName}`);
@@ -109,6 +151,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       if (sent) {
         console.log(`✅ Successfully dispatched ${notificationType} notification.`);
+        
+        // Update Ledger to prevent duplicate webhook sends
+        ledger[notificationType] = new Date().toISOString();
+        const mutation = `#graphql
+          mutation UpdateLedger($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) { userErrors { message } }
+          }
+        `;
+        const INK_NAMESPACE = "ink";
+        await admin.graphql(mutation, {
+          variables: {
+            metafields: [{
+              ownerId: orderGid,
+              namespace: INK_NAMESPACE,
+              key: "notification_ledger",
+              type: "json",
+              value: JSON.stringify(ledger)
+            }]
+          }
+        });
+        console.log(`✅ Notification ledger updated on Shopify.`);
       } else {
         console.log(`ℹ️ Notification skipped or failed (perhaps channel disabled).`);
       }

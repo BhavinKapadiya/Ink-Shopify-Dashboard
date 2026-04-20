@@ -112,6 +112,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await markDeliveredWithRetry(merchantApiKey);
 
+    // ── Step 4: Natively stamp delivered_at to Shopify for Cron Job math ──
+    const deliveredMutation = `#graphql
+      mutation UpdateDeliveredTime($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) { userErrors { message } }
+      }
+    `;
+    await admin.graphql(deliveredMutation, {
+      variables: {
+        metafields: [{
+          ownerId: orderGid,
+          namespace: "ink",
+          key: "delivered_at",
+          type: "date_time",
+          value: new Date().toISOString()
+        }]
+      }
+    });
+    console.log(`[${topic}] ✅ Stamped ink.delivered_at natively to Shopify.`);
+
   } catch (error) {
     console.error(`[${topic}] Error processing fulfilled webhook:`, error);
     return new Response("Internal Server Error", { status: 500 });

@@ -108,10 +108,10 @@ export const NotificationService = {
         messageBody = `Final reminder from ${payload.merchantName}: Please tap the INK sticker on your order ${payload.orderName} to properly register your delivery.`;
         break;
       case "return7d":
-        messageBody = `Hi ${payload.customerName}, you have 7 days left to return order ${payload.orderName}. Need to start a return? Click here: ${payload.verifyUrl}`;
+        messageBody = `Hi ${payload.customerName}, you have 7 days left to return order ${payload.orderName}. Click here to start a return: ${payload.verifyUrl || "Please contact our support."}`;
         break;
       case "return48h":
-        messageBody = `Warning: Your return window for ${payload.merchantName} order ${payload.orderName} closes in 48 hours. Manage it here: ${payload.verifyUrl}`;
+        messageBody = `Warning: Your return window for ${payload.merchantName} order ${payload.orderName} closes in 48 hours. Manage it here: ${payload.verifyUrl || "Please contact our support."}`;
         break;
     }
 

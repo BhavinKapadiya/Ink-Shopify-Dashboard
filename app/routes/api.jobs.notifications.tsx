@@ -61,13 +61,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // We fetch their metafields to check our internal Notification Ledger
     const query = `#graphql
       query GetActiveInkOrders {
-        orders(first: 50, query: "tag:INK AND fulfillment_status:shipped") {
+        orders(first: 200, query: "fulfillment_status:shipped AND status:any") {
           edges {
             node {
               id
               name
               email
               phone
+              shippingAddress {
+                phone
+              }
+              statusPageUrl
               customer {
                 firstName
                 email
@@ -76,6 +80,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               statusMetafield: metafield(namespace: "${INK_NAMESPACE}", key: "verification_status") { value }
               proofMetafield: metafield(namespace: "${INK_NAMESPACE}", key: "proof_reference") { value }
               ledgerMetafield: metafield(namespace: "${INK_NAMESPACE}", key: "notification_ledger") { value }
+              deliveredAtMetafield: metafield(namespace: "${INK_NAMESPACE}", key: "delivered_at") { value }
             }
           }
         }
@@ -95,8 +100,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const json = await response.json();
       const orders = json.data?.orders?.edges || [];
 
+      if (json.errors) {
+         console.warn(`   ⚠️ GraphQL Errors querying orders:`, JSON.stringify(json.errors, null, 2));
+      }
+
+      console.log(`   🔍 Shopify Search Query ("fulfillment_status:shipped") found ${orders.length} orders.`);
+
       if (orders.length === 0) {
-         console.log(`   No active shipped INK orders found.`);
+         console.log(`   ❌ No active shipped INK orders found.`);
          continue;
       }
 
@@ -112,38 +123,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         if (!proofRef) continue;
 
-        // Fetch the absolute freshest state from Alan's DB via API
-        const ALAN_API = process.env.INK_API_URL || "https://us-central1-inink-c76d3.cloudfunctions.net/api";
-        let alanVerifyUrl = "";
-        let alanDeliveredAt: Date | null = null;
+        // Fetch the delivery state natively from Shopify Metafields
+        const deliveredAtValue = order.deliveredAtMetafield?.value;
+        let alanDeliveredAt: Date | null = deliveredAtValue ? new Date(deliveredAtValue) : null;
         let alanReturnExpiresAt: Date | null = null;
+        const returnWindowDays = settings.returnWindow ? parseInt(settings.returnWindow) : 30;
 
-        try {
-          // You need the API Key of the merchant to call Alan's API safely
-          const apiKey = settingsSnap.docs[0].data()?.ink_api_key;
-          if (!apiKey) continue;
-
-          // GET /api/proofs/{proofRef}
-          const alanResp = await fetch(`${ALAN_API}/proofs/${proofRef}`, {
-            headers: { "Authorization": `Bearer ${apiKey}` }
-          });
-          
-          if (alanResp.ok) {
-            const alanData = await alanResp.json();
-            alanVerifyUrl = alanData.verify_url;
-            if (alanData.delivered_at) alanDeliveredAt = new Date(alanData.delivered_at);
-            if (alanData.interaction_window_closed_at) alanReturnExpiresAt = new Date(alanData.interaction_window_closed_at);
-          }
-        } catch (e) {
-          console.warn(`Could not sync Alan state for ${proofRef}`);
+        // If delivered, calculate the expiration date physically on our server
+        if (alanDeliveredAt) {
+          alanReturnExpiresAt = new Date(alanDeliveredAt.getTime() + returnWindowDays * 24 * 60 * 60 * 1000);
         }
 
         // --- MATH AND DISPATCH CALCULATION ---
         const now = new Date();
-        const customerEmail = order.customer?.email || order.email;
-        const customerPhone = order.customer?.phone || order.phone;
+        const customerEmail = order.email || order.customer?.email;
+        const customerPhone = order.shippingAddress?.phone || order.phone || order.customer?.phone;
+        
+        console.log(`   📊 Order Data: isVerified=${isVerified}, deliveredAt=${alanDeliveredAt}, status="${status}", returnExpires=${alanReturnExpiresAt}`);
+        console.log(`   📒 Ledger state:`, ledger);
+
         const customerName = order.customer?.firstName || "Customer";
-        const returnWindowDays = settings.returnWindow ? parseInt(settings.returnWindow) : 30;
 
         const dispatchIfReady = async (type: NotificationType, timeRequired: Date) => {
           if (ledger[type]) return; // Already sent! Prevent spam.
@@ -156,7 +155,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               customerName,
               orderName: order.name,
               merchantName,
-              verifyUrl: alanVerifyUrl,
+              verifyUrl: order.statusPageUrl,
               returnWindowDays
             }, settings);
 
@@ -191,9 +190,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         // If NOT verified, check TAP Reminders
         if (!isVerified && alanDeliveredAt) {
-          const hours4Time = new Date(alanDeliveredAt.getTime() + 4 * 60 * 60 * 1000);
-          const hours24Time = new Date(alanDeliveredAt.getTime() + 24 * 60 * 60 * 1000);
-          const hours48Time = new Date(alanDeliveredAt.getTime() + 48 * 60 * 60 * 1000);
+          // DEV HACKS: 5 min, 10 mins, 15 mins
+          const hours4Time = new Date(alanDeliveredAt.getTime() + 5 * 60 * 1000);
+          const hours24Time = new Date(alanDeliveredAt.getTime() + 10 * 60 * 1000);
+          const hours48Time = new Date(alanDeliveredAt.getTime() + 15 * 60 * 1000);
 
           await dispatchIfReady("hours4", hours4Time);
           await dispatchIfReady("hours24", hours24Time);
@@ -202,10 +202,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         // If VERIFIED, check RETURN WARNING Reminders
         if (isVerified && alanDeliveredAt) {
-          // Natively calculate expiration time using Merchant's custom M7 returnWindowDays (rather than relying on Alan's generic interaction_window_closed_at)
-          const trueReturnExpiresAt = new Date(alanDeliveredAt.getTime() + returnWindowDays * 24 * 60 * 60 * 1000);
-          const days7Time = new Date(trueReturnExpiresAt.getTime() - 7 * 24 * 60 * 60 * 1000);
-          const hours48PriorTime = new Date(trueReturnExpiresAt.getTime() - 48 * 60 * 60 * 1000);
+          // DEV HACKS: Overriding normal math (which requires 23+ days of waiting) 
+          // to trigger instantly at exactly 5 and 10 minutes from delivery for simple developer checking!
+          const days7Time = new Date(alanDeliveredAt.getTime() + 5 * 60 * 1000);
+          const hours48PriorTime = new Date(alanDeliveredAt.getTime() + 10 * 60 * 1000);
 
           await dispatchIfReady("return7d", days7Time);
           await dispatchIfReady("return48h", hours48PriorTime);
