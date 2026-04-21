@@ -126,6 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             console.log(`[verify] Looking up Firestore merchant by shop_domain: "${proofShopDomain}"`);
 
             let merchantDoc: any = null;
+            let merchantDocRef: any = null;
             let merchantSlug = "";
 
             if (proofShopDomain) {
@@ -136,6 +137,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     .get();
 
                 if (!merchantSnap.empty) {
+                    merchantDocRef = merchantSnap.docs[0].ref;
                     merchantDoc = merchantSnap.docs[0].data();
                     merchantSlug = proofShopDomain.replace(".myshopify.com", "").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
                     console.log(`[verify] ✅ Found Firestore merchant for shop_domain. Slug: "${merchantSlug}". Has merchant_media: ${(merchantDoc.merchant_media || []).length} items.`);
@@ -149,6 +151,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         .limit(1)
                         .get();
                     if (!keySnap.empty) {
+                        merchantDocRef = keySnap.docs[0].ref;
                         merchantDoc = keySnap.docs[0].data();
                         const fallbackDomain = merchantDoc.shopDomain || "";
                         merchantSlug = fallbackDomain.replace(".myshopify.com", "").replace(/[^a-z0-9-]/gi, "-").toLowerCase();
@@ -169,7 +172,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const INK_ADMIN_SECRET = process.env.INK_ADMIN_SECRET || "ink_admin_aeb5c9d6e822a4e57d95a6a2224aada64230e48d89acad5782057fcb865548a2";
                 // Build the URL — strip trailing /api since admin routes are already /admin/*
                 const baseUrl = INK_API_BASE.endsWith("/api") ? INK_API_BASE.slice(0, -4) : INK_API_BASE;
-                const animsUrl = `${baseUrl}/admin/merchant-animations/${merchantSlug}`;
+                // Use cached alan_merchant_id if available — this is Alan's authoritative bucket ID (e.g. shop_a66c803d28e0f57f)
+                // Using the correct ID ensures we look in the right storage bucket
+                const alanId = merchantDoc?.alan_merchant_id || merchantSlug;
+                console.log(`[verify] Using Alan bucket ID: "${alanId}" (cached=${!!merchantDoc?.alan_merchant_id})`);
+                const animsUrl = `${baseUrl}/admin/merchant-animations/${alanId}`;
                 
                 console.log(`[verify] Calling Alan GET merchant-animations: ${animsUrl}`);
                 try {
@@ -182,10 +189,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
                     if (animResp.ok) {
                         const animData = JSON.parse(animRaw);
-                        // animData has: animation_url, media_items: [{media_id, media_url, is_active}]
+                        // animData has: animation_url, merchant_id, media_items: [{media_id, media_url, is_active}]
                         merchantAnimationUrl = animData.animation_url || null;
                         console.log(`[verify] ✅ Alan primary animation_url: "${merchantAnimationUrl}"`);
                         console.log(`[verify] Alan media_items count: ${(animData.media_items || []).length}`);
+
+                        // ── Save Alan's authoritative merchant_id to Firestore (Option B) ──
+                        // This ensures future media uploads go to the correct bucket.
+                        if (animData.merchant_id && merchantDocRef) {
+                            const cachedId = merchantDoc?.alan_merchant_id;
+                            if (cachedId !== animData.merchant_id) {
+                                await merchantDocRef.update({ alan_merchant_id: animData.merchant_id });
+                                console.log(`[verify] ✅ Saved Alan merchant_id "${animData.merchant_id}" to Firestore.`);
+                            }
+                        }
 
                         // Merge Alan's media_items into merchantMedia if Firestore was empty
                         if (merchantMedia.length === 0 && (animData.media_items || []).length > 0) {

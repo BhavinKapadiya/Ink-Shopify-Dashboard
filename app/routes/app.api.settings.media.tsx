@@ -218,7 +218,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const doc = await getMerchantDoc(shopDomain, merchantId);
     let merchantMedia = doc?.data()?.merchant_media || [];
 
-    // POST: Upload Media
     if (request.method === "POST") {
       console.log(`[settings/media] Processing POST upload...`);
       const formData = await request.formData();
@@ -231,16 +230,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       console.log(`[settings/media] File received: ${fileEntry.name} (${fileEntry.size} bytes, type=${fileEntry.type})`);
 
-      // Derive the merchant name/slug for Alan's merchant-animation API
+      // ── Resolve Alan's merchant_id ─────────────────────────────────────────
+      // Alan uses internal IDs like "shop_a66c803d28e0f57f", NOT our Shopify slug.
+      // Strategy: Check Firestore cache first → fallback to Alan GET endpoint → save for next time.
       const merchantSlug = shopDomain ? toMerchantSlug(shopDomain) : (merchantId || "unknown");
-      console.log(`[settings/media] Uploading to Alan merchant-animations. merchantSlug=${merchantSlug}`);
+      const INK_API_BASE = INK_API_URL.endsWith("/api") ? INK_API_URL.slice(0, -4) : INK_API_URL;
+
+      let alanMerchantId: string = doc?.data()?.alan_merchant_id || "";
+
+      if (alanMerchantId) {
+          console.log(`[settings/media] ✅ Found cached alan_merchant_id in Firestore: ${alanMerchantId}`);
+      } else {
+          // Ask Alan for the merchant_id by fetching existing animations for this slug
+          console.log(`[settings/media] alan_merchant_id not cached. Calling Alan GET /admin/merchant-animations/${merchantSlug}...`);
+          try {
+              const getResp = await fetch(`${INK_API_BASE}/admin/merchant-animations/${merchantSlug}`, {
+                  headers: { "Authorization": `Bearer ${INK_ADMIN_SECRET}` }
+              });
+              const getRaw = await getResp.text();
+              console.log(`[settings/media] Alan GET merchant-animations status: ${getResp.status}, body: ${getRaw}`);
+              if (getResp.ok) {
+                  const getData = JSON.parse(getRaw);
+                  alanMerchantId = getData.merchant_id || "";
+                  console.log(`[settings/media] ✅ Discovered alan_merchant_id from Alan: ${alanMerchantId}`);
+                  // Cache it in Firestore for next time
+                  if (alanMerchantId && doc) {
+                      await doc.ref.update({ alan_merchant_id: alanMerchantId, updatedAt: new Date() });
+                      console.log(`[settings/media] ✅ Saved alan_merchant_id to Firestore.`);
+                  }
+              } else {
+                  console.warn(`[settings/media] Alan GET failed (${getResp.status}). Will attempt upload using slug as fallback.`);
+              }
+          } catch (getErr: any) {
+              console.warn(`[settings/media] Exception calling Alan GET merchant-animations:`, getErr.message);
+          }
+      }
+
+      // Use alan_merchant_id if we have it, otherwise fall back to slug
+      const uploadMerchantId = alanMerchantId || merchantSlug;
+      console.log(`[settings/media] Uploading to Alan with merchant_id="${uploadMerchantId}"`);
 
       // Alan's merchant branding endpoint uses:
       //   POST /admin/merchant-animations/upload
-      //   Form fields: merchant (string), animation (file)
+      //   Form fields: merchant_id (string), animation (file)
       //   Auth: Bearer <admin_jwt> (INK_ADMIN_SECRET)
       const uploadForm = new FormData();
-      uploadForm.append("merchant", merchantSlug);
+      uploadForm.append("merchant_id", uploadMerchantId);
       uploadForm.append("animation", fileEntry, fileEntry.name);
 
       const uploadUrl = getAlanUrl("/admin/merchant-animations/upload");
@@ -272,9 +307,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           return json({ error: "Failed to contact storage API" }, { status: 500 });
       }
 
-      // Alan returns: { merchant_name, slug, media_id, media_url, animation_url }
+      // Alan returns: { merchant_name, merchant_id, slug, media_id, media_url, animation_url }
       const finalUrl = uploadResult.media_url || uploadResult.animation_url;
       const mediaId = uploadResult.media_id || crypto.randomUUID();
+      // Also cache the merchant_id returned by Alan on successful upload (in case GET didn't work earlier)
+      if (uploadResult.merchant_id && !alanMerchantId && doc) {
+          await doc.ref.update({ alan_merchant_id: uploadResult.merchant_id, updatedAt: new Date() });
+          console.log(`[settings/media] ✅ Saved alan_merchant_id from upload response to Firestore.`);
+      }
       
       if (!finalUrl) {
           console.error(`[settings/media] Alan's response did not contain a URL! Full response:`, uploadResult);
