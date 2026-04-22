@@ -395,6 +395,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               const [moved] = merchantMedia.splice(idx, 1);
               merchantMedia.unshift(moved);
            }
+
+           // Synchronize primary media choice with Alan's backend
+           const merchantSlug = shopDomain ? toMerchantSlug(shopDomain) : (merchantId || "unknown");
+           const targetMerchantId = doc?.data()?.alan_merchant_id || merchantSlug;
+           const patchUrl = getAlanUrl(`/admin/merchant-animations/${targetMerchantId}/primary`);
+           
+           console.log(`[settings/media] Syncing primary choice to Alan → ${patchUrl} (media_id=${id})`);
+           try {
+               const patchResp = await fetch(patchUrl, {
+                   method: "PATCH",
+                   headers: { 
+                       "Authorization": `Bearer ${INK_ADMIN_SECRET}`,
+                       "Content-Type": "application/json"
+                   },
+                   body: JSON.stringify({ media_id: id })
+               });
+               const patchText = await patchResp.text();
+               console.log(`[settings/media] Alan PATCH primary status=${patchResp.status}, resp=${patchText}`);
+           } catch (e: any) {
+               console.warn(`[settings/media] Non-fatal: Alan PATCH primary failed: ${e.message}`);
+           }
        } else if (body.updateMetadata) {
            // Duration, loop, etc.
            const { id, updates } = body.updateMetadata;
